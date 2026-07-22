@@ -11,7 +11,7 @@ class Student(Base):
 
     id = Column(Integer, primary_key=True, index=True, default=gen_uuid)
 
-    student_id = Column(
+    reg_number = Column(
         String,
         unique=True,
         nullable=False
