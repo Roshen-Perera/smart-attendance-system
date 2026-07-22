@@ -1,18 +1,27 @@
 from fastapi import FastAPI
+
 from app.db import Base, engine
-from app.models import student
 from app.routers import students
+from app.models import student
+
+
+Base.metadata.create_all(
+    bind=engine
+)
+
 
 app = FastAPI(
-    title="Smart Attendance API"
+    title="AI Smart Attendance API"
 )
+
+
+app.include_router(
+    students.router
+)
+
 
 @app.get("/")
 def root():
     return {
         "message": "Smart Attendance API running"
     }
-
-app.include_router(
-    students.router
-)
