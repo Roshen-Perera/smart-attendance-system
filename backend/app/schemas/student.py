@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-
+from uuid import UUID
 
 class StudentCreate(BaseModel):
     reg_number: str
@@ -9,7 +9,7 @@ class StudentCreate(BaseModel):
 
 
 class StudentOut(BaseModel):
-    id: int
+    id: UUID
     reg_number: str
     name: str
     email: EmailStr | None
