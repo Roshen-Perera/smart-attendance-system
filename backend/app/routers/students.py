@@ -31,14 +31,14 @@ def get_students(db: Session = Depends(get_db)):
 
 @router.get("/{reg_number}", response_model=schemas.StudentOut)
 def get_student(reg_number: str, db: Session = Depends(get_db)):
-    student = db.get(models.Student, reg_number)
+    student = (db.query(models.Student).filter(models.Student.reg_number == reg_number).first())
     if not student:
         raise HTTPException(404, "Student not found")
     return student
 
 @router.put("/{reg_number}", response_model=schemas.StudentOut)
 def update_student(reg_number: str, payload: schemas.StudentUpdate, db: Session = Depends(get_db)):
-    student = db.get(models.Student, reg_number)
+    student = (db.query(models.Student).filter(models.Student.reg_number == reg_number).first())
     if not student:
         raise HTTPException(404, "Student not found")
 
@@ -51,7 +51,7 @@ def update_student(reg_number: str, payload: schemas.StudentUpdate, db: Session 
 
 @router.delete("/{reg_number}", status_code=204)
 def delete_student(reg_number: str, db: Session = Depends(get_db)):
-    student = db.get(models.Student, reg_number)
+    student = (db.query(models.Student).filter(models.Student.reg_number == reg_number).first())
     if not student:
         raise HTTPException(404, "Student not found")
 
