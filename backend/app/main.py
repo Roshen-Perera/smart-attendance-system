@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from app.db import Base, engine
 from app.routers import students
 from app.models import student
+from app.routers import faces
 
 
 Base.metadata.create_all(
