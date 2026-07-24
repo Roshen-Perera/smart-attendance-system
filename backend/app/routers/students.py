@@ -12,53 +12,27 @@ router = APIRouter(
 )
 
 
-@router.post(
-    "",
-    response_model=schemas.StudentOut,
-    status_code=201
-)
-def create_student(
-    payload: schemas.StudentCreate,
-    db: Session = Depends(get_db)
-):
-
-    existing_student = (
-        db.query(models.Student)
-        .filter(
-            models.Student.reg_number == payload.reg_number
-        )
-        .first()
-    )
-
+@router.post("", response_model=schemas.StudentOut, status_code=201)
+def create_student(payload: schemas.StudentCreate, db: Session = Depends(get_db)):
+    existing_student = (db.query(models.Student).filter(models.Student.reg_number == payload.reg_number).first())
     if existing_student:
-        raise HTTPException(
-            status_code=400,
-            detail="Student with this registration number already exists"
-        )
+        raise HTTPException(status_code=400, detail="Student with this registration number already exists")
 
-
-    student = models.Student(
-        **payload.model_dump()
-    )
-
+    student = models.Student(**payload.model_dump())
     db.add(student)
     db.commit()
     db.refresh(student)
-
     return student
 
 
-@router.get(
-    "",
-    response_model=list[schemas.StudentOut]
-)
-def get_students(
-    db: Session = Depends(get_db)
-):
-
-    students = (
-        db.query(models.Student)
-        .all()
-    )
-
+@router.get("", response_model=list[schemas.StudentOut])
+def get_students(db: Session = Depends(get_db)):
+    students = (db.query(models.Student).all())
     return students
+
+@router.get("/{reg_number}", response_model=schemas.StudentOut)
+def get_student(reg_number: str, db: Session = Depends(get_db)):
+    student = db.get(models.Student, reg_number)
+    if not student:
+        raise HTTPException(404, "Student not found")
+    return student
