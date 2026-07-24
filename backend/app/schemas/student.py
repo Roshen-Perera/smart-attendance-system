@@ -2,9 +2,15 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from uuid import UUID
 
+
 class StudentCreate(BaseModel):
     reg_number: str
     name: str
+    email: EmailStr | None = None
+
+
+class StudentUpdate(BaseModel):
+    name: str | None = None
     email: EmailStr | None = None
 
 
