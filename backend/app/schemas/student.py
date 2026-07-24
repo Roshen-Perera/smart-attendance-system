@@ -23,3 +23,11 @@ class StudentOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class FaceImageOut(BaseModel):
+    id: UUID
+    image_path: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True    
