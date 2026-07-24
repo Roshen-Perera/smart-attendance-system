@@ -36,3 +36,16 @@ def get_student(reg_number: str, db: Session = Depends(get_db)):
     if not student:
         raise HTTPException(404, "Student not found")
     return student
+
+@router.put("/{reg_number}", response_model=schemas.StudentOut)
+def update_student(reg_number: str, payload: schemas.StudentUpdate, db: Session = Depends(get_db)):
+    student = db.get(models.Student, reg_number)
+    if not student:
+        raise HTTPException(404, "Student not found")
+
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(student, key, value)
+
+    db.commit()
+    db.refresh(student)
+    return student
