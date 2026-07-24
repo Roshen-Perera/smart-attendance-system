@@ -3,6 +3,8 @@ from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 
+from sqlalchemy.orm import relationship
+
 from app.db import Base
 
 
@@ -31,6 +33,12 @@ class Student(Base):
         String,
         unique=True,
         nullable=True
+    )
+
+    face_images = relationship(
+        "FaceImage",
+        back_populates="student",
+        cascade="all, delete-orphan"
     )
 
     created_at = Column(
