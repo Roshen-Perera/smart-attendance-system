@@ -20,6 +20,9 @@ app.include_router(
     students.router
 )
 
+app.include_router(
+    faces.router
+)
 
 @app.get("/")
 def root():
