@@ -97,3 +97,32 @@ async def upload_face(
         "image_id": str(face_image.id),
         "image_path": face_image.image_path
     }
+
+@router.get("/{reg_number}", response_model=list[str])
+def get_face_images(
+    reg_number: str,
+    db: Session = Depends(get_db)
+):
+    student = (
+        db.query(models.Student)
+        .filter(
+            models.Student.reg_number == reg_number
+        )
+        .first()
+    )
+
+    if not student:
+        raise HTTPException(
+            status_code=404,
+            detail="Student not found"
+        )
+
+    face_images = (
+        db.query(models.FaceImage)
+        .filter(
+            models.FaceImage.student_id == student.id
+        )
+        .all()
+    )
+
+    return [face.image_path for face in face_images]
