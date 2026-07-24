@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app import models
+from app.schemas import face as face_schema
 
 
 router = APIRouter(
@@ -98,11 +99,12 @@ async def upload_face(
         "image_path": face_image.image_path
     }
 
-@router.get("/{reg_number}", response_model=list[str])
+@router.get("/{reg_number}", response_model=list[face_schema.FaceImageOut])
 def get_face_images(
     reg_number: str,
     db: Session = Depends(get_db)
 ):
+
     student = (
         db.query(models.Student)
         .filter(
@@ -117,6 +119,7 @@ def get_face_images(
             detail="Student not found"
         )
 
+
     face_images = (
         db.query(models.FaceImage)
         .filter(
@@ -125,4 +128,4 @@ def get_face_images(
         .all()
     )
 
-    return [face.image_path for face in face_images]
+    return face_images
