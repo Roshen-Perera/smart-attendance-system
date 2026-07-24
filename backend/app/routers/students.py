@@ -11,7 +11,6 @@ router = APIRouter(
     tags=["Students"]
 )
 
-
 @router.post("", response_model=schemas.StudentOut, status_code=201)
 def create_student(payload: schemas.StudentCreate, db: Session = Depends(get_db)):
     existing_student = (db.query(models.Student).filter(models.Student.reg_number == payload.reg_number).first())
