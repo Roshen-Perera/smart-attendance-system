@@ -49,3 +49,13 @@ def update_student(reg_number: str, payload: schemas.StudentUpdate, db: Session 
     db.commit()
     db.refresh(student)
     return student
+
+@router.delete("/{reg_number}", status_code=204)
+def delete_student(reg_number: str, db: Session = Depends(get_db)):
+    student = db.get(models.Student, reg_number)
+    if not student:
+        raise HTTPException(404, "Student not found")
+
+    db.delete(student)
+    db.commit()
+    return None
