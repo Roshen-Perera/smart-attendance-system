@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.db import Base, engine
 import app.models  # Imports ALL models so Base creates all database tables
-from app.routers import students, faces, lecturers
+from app.routers import students, faces
 
 Base.metadata.create_all(bind=engine)
 
@@ -16,7 +16,6 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.include_router(students.router)
 app.include_router(faces.router)
-app.include_router(lecturers.router)
 
 @app.get("/")
 def root():
