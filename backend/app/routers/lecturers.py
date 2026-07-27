@@ -10,6 +10,7 @@ router = APIRouter(
     tags=["Lecturers"]
 )
 
+
 @router.post("", response_model=schemas.LecturerOut, status_code=status.HTTP_201_CREATED)
 def create_lecturer(payload: schemas.LecturerCreate, db: Session = Depends(get_db)):
     existing = db.query(models.Lecturer).filter(models.Lecturer.email == payload.email).first()
@@ -22,9 +23,11 @@ def create_lecturer(payload: schemas.LecturerCreate, db: Session = Depends(get_d
     db.refresh(lecturer)
     return lecturer
 
+
 @router.get("", response_model=list[schemas.LecturerOut])
 def get_lecturers(db: Session = Depends(get_db)):
     return db.query(models.Lecturer).all()
+
 
 @router.get("/{lecturer_id}", response_model=schemas.LecturerOut)
 def get_lecturer(lecturer_id: str, db: Session = Depends(get_db)):
@@ -32,6 +35,7 @@ def get_lecturer(lecturer_id: str, db: Session = Depends(get_db)):
     if not lecturer:
         raise HTTPException(status_code=404, detail="Lecturer not found")
     return lecturer
+
 
 @router.put("/{lecturer_id}", response_model=schemas.LecturerOut)
 def update_lecturer(lecturer_id: str, payload: schemas.LecturerUpdate, db: Session = Depends(get_db)):
@@ -45,6 +49,7 @@ def update_lecturer(lecturer_id: str, payload: schemas.LecturerUpdate, db: Sessi
     db.commit()
     db.refresh(lecturer)
     return lecturer
+
 
 @router.delete("/{lecturer_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_lecturer(lecturer_id: str, db: Session = Depends(get_db)):
