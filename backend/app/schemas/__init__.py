@@ -4,4 +4,4 @@ from .lecturer import LecturerCreate, LecturerUpdate, LecturerOut
 from .class_course import ClassCreate, ClassUpdate, ClassOut
 from .enrollment import EnrollmentCreate, EnrollmentUpdate, EnrollmentOut
 from .session import SessionCreate, SessionUpdate, SessionOut
-from .attendance import AttendanceCreate, AttendanceRecordOut
+from .attendance import AttendanceCreate, AttendanceOut
