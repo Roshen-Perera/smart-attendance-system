@@ -51,3 +51,9 @@ class Student(Base):
         back_populates="student",
         cascade="all, delete-orphan"
     )
+
+    attendance_records = relationship(
+        "AttendanceRecord",
+        back_populates="student",
+        cascade="all, delete-orphan"
+    )
