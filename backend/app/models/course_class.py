@@ -18,5 +18,6 @@ class Class(Base):
     course_name = Column(String, nullable=False)
     lecturer_id = Column(String, ForeignKey("lecturers.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-
     lecturer = relationship("Lecturer", back_populates="classes")
+    enrollments = relationship("Enrollment", back_populates="classroom", cascade="all, delete-orphan")
+    sessions = relationship("Session", back_populates="classroom", cascade="all, delete-orphan")
