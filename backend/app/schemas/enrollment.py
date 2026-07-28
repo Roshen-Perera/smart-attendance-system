@@ -1,11 +1,11 @@
 from datetime import datetime
-
+from uuid import UUID
 from pydantic import BaseModel
 
 
 class EnrollmentCreate(BaseModel):
-    student_id: str
-    class_id: str
+    student_id: UUID
+    class_id: UUID
 
 
 class EnrollmentUpdate(BaseModel):

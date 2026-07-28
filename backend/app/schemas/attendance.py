@@ -1,11 +1,11 @@
 from datetime import datetime
-
+from uuid import UUID
 from pydantic import BaseModel
 
 
 class AttendanceCreate(BaseModel):
-    session_id: str
-    student_id: str
+    session_id: UUID
+    student_id: UUID
     confidence_score: float | None = None
 
 
