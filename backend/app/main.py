@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.db import Base, engine
 import app.models  # Registers Student, FaceImage, Lecturer, and Class
-from app.routers import students, faces, lecturers, classes, enrollments, sessions
+from app.routers import students, faces, lecturers, classes, enrollments, sessions, attendance
 
 Base.metadata.create_all(bind=engine)
 
@@ -19,6 +19,7 @@ app.include_router(lecturers.router)
 app.include_router(classes.router)
 app.include_router(enrollments.router)
 app.include_router(sessions.router)
+app.include_router(attendance.router)
 
 @app.get("/")
 def root():
