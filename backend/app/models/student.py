@@ -45,3 +45,9 @@ class Student(Base):
         DateTime,
         default=datetime.utcnow
     )
+
+    enrollments = relationship(
+        "Enrollment",
+        back_populates="student",
+        cascade="all, delete-orphan"
+    )
