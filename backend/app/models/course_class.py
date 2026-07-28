@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 
@@ -13,10 +14,10 @@ def gen_uuid():
 class Class(Base):
     __tablename__ = "classes"
 
-    id = Column(String, primary_key=True, default=gen_uuid)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     course_code = Column(String, nullable=False, index=True)
     course_name = Column(String, nullable=False)
-    lecturer_id = Column(String, ForeignKey("lecturers.id"), nullable=False)
+    lecturer_id = Column(UUID(as_uuid=True), ForeignKey("lecturers.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     lecturer = relationship("Lecturer", back_populates="classes")
     enrollments = relationship("Enrollment", back_populates="classroom", cascade="all, delete-orphan")

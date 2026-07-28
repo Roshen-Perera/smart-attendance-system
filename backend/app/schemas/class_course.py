@@ -1,12 +1,13 @@
 from datetime import datetime
 
 from pydantic import BaseModel
+from uuid import UUID
 
 
 class ClassCreate(BaseModel):
     course_code: str
     course_name: str
-    lecturer_id: str
+    lecturer_id: UUID
 
 
 class ClassUpdate(BaseModel):
