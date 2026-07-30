@@ -2,6 +2,7 @@ import random
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+import face_recognition
 
 from app.db import get_db
 from app import models
@@ -34,10 +35,21 @@ def generate_embedding(
             detail="Student not found"
         )
 
-    embedding = [
-        random.random()
-        for _ in range(512)
-    ]
+    image = face_recognition.load_image_file(
+    "uploads/faces/image.jpg"
+)
+
+    encodings = face_recognition.face_encodings(image)
+
+
+    if not encodings:
+        raise HTTPException(
+            400,
+            "No face detected"
+        )
+
+
+    embedding = encodings[0].tolist()
 
     face_embedding = models.FaceEmbedding(
         student_id=student.id,
