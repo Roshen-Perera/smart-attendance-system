@@ -35,9 +35,26 @@ def generate_embedding(
             detail="Student not found"
         )
 
+    face_image = (
+        db.query(models.FaceImage)
+        .filter(
+            models.FaceImage.student_id == student.id
+        )
+        .first()
+    )
+
+
+    if not face_image:
+        raise HTTPException(
+            400,
+            "No face image found"
+        )
+
+
     image = face_recognition.load_image_file(
-    "uploads/faces/image.jpg"
-)
+        face_image.image_path
+    )
+
 
     encodings = face_recognition.face_encodings(image)
 
