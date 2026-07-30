@@ -35,5 +35,6 @@ class FaceEmbedding(Base):
     )
 
     student = relationship(
-        "Student"
+        "Student",
+        back_populates="face_embeddings"
     )

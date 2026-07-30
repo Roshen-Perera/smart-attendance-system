@@ -60,5 +60,6 @@ class Student(Base):
 
     face_embeddings = relationship(
         "FaceEmbedding",
+        back_populates="student",
         cascade="all, delete-orphan"
     )
