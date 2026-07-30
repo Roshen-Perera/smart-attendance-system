@@ -17,10 +17,10 @@ class ClassUpdate(BaseModel):
 
 
 class ClassOut(BaseModel):
-    id: str
+    id: UUID
     course_code: str
     course_name: str
-    lecturer_id: str
+    lecturer_id: UUID
     created_at: datetime
 
     model_config = {
