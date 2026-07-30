@@ -9,14 +9,14 @@ class EnrollmentCreate(BaseModel):
 
 
 class EnrollmentUpdate(BaseModel):
-    student_id: str | None = None
-    class_id: str | None = None
+    student_id: UUID | None = None
+    class_id: UUID | None = None
 
 
 class EnrollmentOut(BaseModel):
-    id: str
-    student_id: str
-    class_id: str
+    id: UUID
+    student_id: UUID
+    class_id: UUID
     created_at: datetime
 
     model_config = {
