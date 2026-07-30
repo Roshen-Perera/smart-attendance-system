@@ -13,8 +13,8 @@ class SessionUpdate(BaseModel):
 
 
 class SessionOut(BaseModel):
-    id: str
-    class_id: str
+    id: UUID
+    class_id: UUID
     session_date: datetime
     created_at: datetime
 

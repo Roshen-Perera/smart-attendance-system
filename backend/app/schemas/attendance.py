@@ -10,9 +10,9 @@ class AttendanceCreate(BaseModel):
 
 
 class AttendanceOut(BaseModel):
-    id: str
-    session_id: str
-    student_id: str
+    id: UUID
+    session_id: UUID
+    student_id: UUID
     marked_at: datetime
     confidence_score: float | None
 
