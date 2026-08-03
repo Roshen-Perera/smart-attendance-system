@@ -5,10 +5,21 @@ from fastapi.staticfiles import StaticFiles
 from app.db import Base, engine
 import app.models  # Registers Student, FaceImage, Lecturer, and Class
 from app.routers import students, faces, lecturers, classes, enrollments, sessions, attendance, eligibility, embeddings, recognition
+from fastapi.middleware.cors import CORSMiddleware
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="AI Smart Attendance API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 os.makedirs("uploads/faces", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
