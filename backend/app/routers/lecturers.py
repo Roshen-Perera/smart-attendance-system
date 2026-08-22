@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -25,8 +25,12 @@ def create_lecturer(payload: schemas.LecturerCreate, db: Session = Depends(get_d
 
 
 @router.get("", response_model=list[schemas.LecturerOut])
-def get_lecturers(db: Session = Depends(get_db)):
-    return db.query(models.Lecturer).all()
+def get_lecturers(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db)
+):
+    return db.query(models.Lecturer).offset(skip).limit(limit).all()
 
 
 @router.get("/{lecturer_id}", response_model=schemas.LecturerOut)

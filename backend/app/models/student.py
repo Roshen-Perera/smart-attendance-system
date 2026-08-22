@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import relationship
 
@@ -43,7 +43,7 @@ class Student(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=lambda: datetime.now(timezone.utc)
     )
 
     enrollments = relationship(

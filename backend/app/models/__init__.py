@@ -6,3 +6,4 @@ from .enrollment import Enrollment
 from .session import Session
 from .attendance import AttendanceRecord
 from .face_embedding import FaceEmbedding
+from .user import User

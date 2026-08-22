@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, String, DateTime
@@ -19,7 +19,8 @@ class Lecturer(Base):
     full_name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
     department = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    hashed_password = Column(String, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     classes = relationship(
         "Class",

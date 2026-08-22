@@ -1,5 +1,3 @@
-import random
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import face_recognition
