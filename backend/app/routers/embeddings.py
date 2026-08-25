@@ -5,6 +5,8 @@ import face_recognition
 from app.db import get_db
 from app import models
 from app.schemas import embedding as schemas
+from app.dependencies import require_lecturer
+from app.logger import logger
 
 router = APIRouter(
     prefix="/embeddings",
@@ -16,7 +18,8 @@ router = APIRouter(
 )
 def generate_embedding(
     reg_number: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
 
     student = (
@@ -74,6 +77,7 @@ def generate_embedding(
     db.add(face_embedding)
     db.commit()
     db.refresh(face_embedding)
+    logger.info(f"Face embedding generated for student {reg_number} by user {current_user.email}")
 
     return face_embedding
 
@@ -111,7 +115,8 @@ def get_embeddings(
 @router.delete("/{embedding_id}", status_code=204)
 def delete_embedding(
     embedding_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
 
     embedding = db.get(
@@ -127,6 +132,7 @@ def delete_embedding(
 
     db.delete(embedding)
     db.commit()
+    logger.info(f"Embedding {embedding_id} deleted by user {current_user.email}")
 
     return None
 
