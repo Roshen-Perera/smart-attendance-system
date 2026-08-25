@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Calendar, Lock, Play, ArrowRight, Trash2, Edit2 } from 'lucide-react';
+import { Plus, Lock, ArrowRight, Trash2 } from 'lucide-react';
 import { sessionsApi, classesApi } from '../api/endpoints';
-import { Session, ClassCourse, SessionCreate } from '../types';
+import type { Session, ClassCourse, SessionCreate } from '../types';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import toast from 'react-hot-toast';
