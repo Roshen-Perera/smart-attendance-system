@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, BookOpen, UserCheck, Calendar, Edit2, Trash2, Users } from 'lucide-react';
+import { Plus, Calendar, Edit2, Trash2, Users } from 'lucide-react';
 import { classesApi, lecturersApi } from '../api/endpoints';
-import { ClassCourse, Lecturer, ClassCreate } from '../types';
+import type { ClassCourse, Lecturer, ClassCreate } from '../types';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAuthStore } from '../store/authStore';
