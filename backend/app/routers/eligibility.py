@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app import models
 from app.schemas import eligibility as schemas
+from app.logger import logger
 
 router = APIRouter(
     prefix="/eligibility",
@@ -68,6 +69,8 @@ def calculate_eligibility(
 
     # Determine eligibility
     status = "Eligible" if percentage >= 80 else "Not Eligible"
+
+    logger.info(f"Eligibility calculated: student={student.reg_number}, class={classroom.course_code}, percentage={round(percentage, 2)}%, status={status}")
 
     # Return result
     return {

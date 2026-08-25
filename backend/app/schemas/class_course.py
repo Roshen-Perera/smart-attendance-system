@@ -13,7 +13,7 @@ class ClassCreate(BaseModel):
 class ClassUpdate(BaseModel):
     course_code: str | None = None
     course_name: str | None = None
-    lecturer_id: str | None = None
+    lecturer_id: UUID | None = None
 
 
 class ClassOut(BaseModel):

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
@@ -18,7 +18,7 @@ class Class(Base):
     course_code = Column(String, nullable=False, index=True)
     course_name = Column(String, nullable=False)
     lecturer_id = Column(UUID(as_uuid=True), ForeignKey("lecturers.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     lecturer = relationship("Lecturer", back_populates="classes")
     enrollments = relationship("Enrollment", back_populates="classroom", cascade="all, delete-orphan")
     sessions = relationship("Session", back_populates="classroom", cascade="all, delete-orphan")

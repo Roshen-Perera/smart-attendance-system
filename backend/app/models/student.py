@@ -1,7 +1,7 @@
 import uuid
 from sqlalchemy import Column, String, DateTime
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import relationship
 
@@ -43,7 +43,7 @@ class Student(Base):
 
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=lambda: datetime.now(timezone.utc)
     )
 
     enrollments = relationship(
@@ -54,6 +54,12 @@ class Student(Base):
 
     attendance_records = relationship(
         "AttendanceRecord",
+        back_populates="student",
+        cascade="all, delete-orphan"
+    )
+
+    face_embeddings = relationship(
+        "FaceEmbedding",
         back_populates="student",
         cascade="all, delete-orphan"
     )

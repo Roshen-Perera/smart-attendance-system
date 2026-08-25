@@ -1,8 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import relationship
 
 from app.db import Base
@@ -28,9 +28,15 @@ class Session(Base):
         nullable=False
     )
 
+    is_active = Column(
+        Boolean,
+        default=True,
+        nullable=False
+    )
+
     created_at = Column(
         DateTime,
-        default=datetime.utcnow
+        default=lambda: datetime.now(timezone.utc)
     )
 
     classroom = relationship(
