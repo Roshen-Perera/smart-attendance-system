@@ -6,12 +6,10 @@ import {
   CheckCircle2,
   XCircle,
   Download,
-  Lock,
   UserCheck,
   Edit2,
   Trash2,
   Sparkles,
-  RefreshCw,
 } from 'lucide-react';
 import {
   sessionsApi,
@@ -20,7 +18,7 @@ import {
   recognitionApi,
   reportsApi,
 } from '../api/endpoints';
-import { Session, ClassCourse, Student, AttendanceRecord } from '../types';
+import type { Session, ClassCourse, Student, AttendanceRecord } from '../types';
 import { Modal } from '../components/ui/Modal';
 import toast from 'react-hot-toast';
 
