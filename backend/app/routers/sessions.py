@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app import models
 from app.schemas import session as schemas
+from app.dependencies import require_lecturer
+from app.logger import logger
 
 router = APIRouter(
     prefix="/sessions",
@@ -14,7 +16,8 @@ router = APIRouter(
 @router.post("", response_model=schemas.SessionOut, status_code=201)
 def create_session(
     payload: schemas.SessionCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
     classroom = db.get(models.Class, payload.class_id)
     if not classroom:
@@ -27,6 +30,7 @@ def create_session(
     db.add(session)
     db.commit()
     db.refresh(session)
+    logger.info(f"Session created for class {classroom.course_code} by user {current_user.email}")
     return session
 
 
@@ -61,7 +65,8 @@ def get_session(
 def update_session(
     session_id: str,
     payload: schemas.SessionUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
     session = db.get(models.Session, session_id)
     if not session:
@@ -75,13 +80,15 @@ def update_session(
 
     db.commit()
     db.refresh(session)
+    logger.info(f"Session {session_id} updated by user {current_user.email}")
     return session
 
 
 @router.patch("/{session_id}/close", response_model=schemas.SessionOut)
 def close_session(
     session_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
     session = db.get(models.Session, session_id)
     if not session:
@@ -93,13 +100,15 @@ def close_session(
     session.is_active = False
     db.commit()
     db.refresh(session)
+    logger.info(f"Session {session_id} closed by user {current_user.email}")
     return session
 
 
 @router.delete("/{session_id}", status_code=204)
 def delete_session(
     session_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
     session = db.get(models.Session, session_id)
     if not session:
@@ -110,4 +119,5 @@ def delete_session(
 
     db.delete(session)
     db.commit()
+    logger.info(f"Session {session_id} deleted by user {current_user.email}")
     return None
