@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app import models
 from app.schemas import enrollment as schemas
+from app.dependencies import require_lecturer
+from app.logger import logger
 
 router = APIRouter(prefix="/enrollments", tags=["Enrollments"])
 
@@ -11,7 +13,8 @@ router = APIRouter(prefix="/enrollments", tags=["Enrollments"])
 @router.post("", response_model=schemas.EnrollmentOut, status_code=201)
 def create_enrollment(
     payload: schemas.EnrollmentCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
     student = db.get(models.Student, payload.student_id)
     if not student:
@@ -41,6 +44,7 @@ def create_enrollment(
     db.add(enrollment)
     db.commit()
     db.refresh(enrollment)
+    logger.info(f"Student {student.reg_number} enrolled in class {classroom.course_code} by user {current_user.email}")
 
     return enrollment
 
@@ -69,7 +73,8 @@ def get_enrollment(
 @router.delete("/{enrollment_id}", status_code=204)
 def delete_enrollment(
     enrollment_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
     enrollment = db.get(models.Enrollment, enrollment_id)
     if not enrollment:
@@ -77,5 +82,6 @@ def delete_enrollment(
 
     db.delete(enrollment)
     db.commit()
+    logger.info(f"Enrollment {enrollment_id} deleted by user {current_user.email}")
 
     return None
