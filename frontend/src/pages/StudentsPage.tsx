@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Camera, Edit2, Trash2, GraduationCap, Mail, Phone, Book } from 'lucide-react';
+import { Plus, Search, Camera, Edit2, Trash2 } from 'lucide-react';
 import { studentsApi } from '../api/endpoints';
-import { Student, StudentCreate } from '../types';
+import type { Student, StudentCreate } from '../types';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAuthStore } from '../store/authStore';
