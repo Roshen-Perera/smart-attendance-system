@@ -5,6 +5,8 @@ from app.db import get_db
 from app import models
 from app.schemas import student as schemas
 from app.schemas.class_course import ClassOut
+from app.dependencies import require_lecturer, require_admin
+from app.logger import logger
 
 router = APIRouter(
     prefix="/students",
@@ -13,7 +15,11 @@ router = APIRouter(
 
 
 @router.post("", response_model=schemas.StudentOut, status_code=201)
-def create_student(payload: schemas.StudentCreate, db: Session = Depends(get_db)):
+def create_student(
+    payload: schemas.StudentCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
+):
     existing_student = (
         db.query(models.Student)
         .filter(models.Student.reg_number == payload.reg_number)
@@ -29,6 +35,7 @@ def create_student(payload: schemas.StudentCreate, db: Session = Depends(get_db)
     db.add(student)
     db.commit()
     db.refresh(student)
+    logger.info(f"Student created: {student.reg_number} ({student.name}) by user {current_user.email}")
     return student
 
 
@@ -64,7 +71,12 @@ def get_student_classes(student_id: str, db: Session = Depends(get_db)):
 
 
 @router.put("/{student_id}", response_model=schemas.StudentOut)
-def update_student(student_id: str, payload: schemas.StudentUpdate, db: Session = Depends(get_db)):
+def update_student(
+    student_id: str,
+    payload: schemas.StudentUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
+):
     student = db.query(models.Student).filter(models.Student.id == student_id).first()
     if not student:
         raise HTTPException(404, "Student not found")
@@ -74,15 +86,21 @@ def update_student(student_id: str, payload: schemas.StudentUpdate, db: Session 
 
     db.commit()
     db.refresh(student)
+    logger.info(f"Student updated: {student.reg_number} by user {current_user.email}")
     return student
 
 
 @router.delete("/{student_id}", status_code=204)
-def delete_student(student_id: str, db: Session = Depends(get_db)):
+def delete_student(
+    student_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
+):
     student = db.query(models.Student).filter(models.Student.id == student_id).first()
     if not student:
         raise HTTPException(404, "Student not found")
 
     db.delete(student)
     db.commit()
+    logger.info(f"Student deleted: {student_id} by admin {current_user.email}")
     return None
