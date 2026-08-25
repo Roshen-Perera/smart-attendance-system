@@ -11,7 +11,7 @@ import {
   FileCheck,
 } from 'lucide-react';
 import { studentsApi, lecturersApi, classesApi, sessionsApi, attendanceApi } from '../api/endpoints';
-import { Student, ClassCourse, Session, AttendanceRecord } from '../types';
+import type { AttendanceRecord } from '../types';
 import { useAuthStore } from '../store/authStore';
 
 export const DashboardPage: React.FC = () => {
