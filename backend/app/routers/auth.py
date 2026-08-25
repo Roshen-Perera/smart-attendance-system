@@ -7,6 +7,7 @@ from app import models
 from app.schemas import auth as schemas
 from app.auth import get_password_hash, verify_password, create_access_token
 from app.dependencies import get_current_user
+from app.logger import logger
 
 router = APIRouter(
     prefix="/auth",
@@ -36,6 +37,7 @@ def register_user(
     db.add(user)
     db.commit()
     db.refresh(user)
+    logger.info(f"User registered: {user.email} (role: {user.role})")
     return user
 
 
@@ -46,6 +48,7 @@ def login(
 ):
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
+        logger.warning(f"Failed login attempt for email: {form_data.username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -55,6 +58,7 @@ def login(
     access_token = create_access_token(
         data={"sub": str(user.id), "role": user.role, "email": user.email}
     )
+    logger.info(f"Successful login: {user.email}")
     return {
         "access_token": access_token,
         "token_type": "bearer",
