@@ -1,27 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Upload, Cpu, CheckCircle2, AlertCircle, Trash2, Camera, ShieldCheck } from 'lucide-react';
-import { facesApi, studentsApi } from '../api/endpoints';
-import { FaceImage, FaceEmbedding, Student } from '../types';
+import { ArrowLeft, Upload, Cpu, CheckCircle2, Trash2, Camera, ShieldCheck } from 'lucide-react';
+import { facesApi } from '../api/endpoints';
+import type { FaceImage, FaceEmbedding } from '../types';
 import toast from 'react-hot-toast';
 
 export const StudentFacePage: React.FC = () => {
   const { regNumber } = useParams<{ regNumber: string }>();
   const decodedRegNumber = regNumber ? decodeURIComponent(regNumber) : '';
 
-  const [student, setStudent] = useState<Student | null>(null);
   const [images, setImages] = useState<FaceImage[]>([]);
   const [embeddings, setEmbeddings] = useState<FaceEmbedding[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
   const loadStudentData = async () => {
     if (!decodedRegNumber) return;
     try {
-      setIsLoading(true);
       const [faceImages, faceEmbeddings] = await Promise.all([
         facesApi.getImages(decodedRegNumber),
         facesApi.getEmbeddings(decodedRegNumber),
@@ -31,8 +28,6 @@ export const StudentFacePage: React.FC = () => {
     } catch (err) {
       console.error(err);
       toast.error('Failed to load face biometric data');
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -243,7 +238,6 @@ export const StudentFacePage: React.FC = () => {
                   alt="Face"
                   className="w-full h-36 object-cover rounded-lg"
                   onError={(e) => {
-                    // Fallback preview
                     (e.target as HTMLElement).style.display = 'none';
                   }}
                 />
