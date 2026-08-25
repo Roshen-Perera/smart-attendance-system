@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { FileCheck, AlertCircle, CheckCircle2, XCircle, Search, BarChart3 } from 'lucide-react';
+import { CheckCircle2, XCircle, BarChart3 } from 'lucide-react';
 import { classesApi, eligibilityApi } from '../api/endpoints';
-import { ClassCourse, Student, EligibilityResult } from '../types';
+import type { ClassCourse, Student, EligibilityResult } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import toast from 'react-hot-toast';
 
