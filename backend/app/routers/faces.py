@@ -25,7 +25,7 @@ router = APIRouter(
 UPLOAD_DIR = "uploads/faces"
 
 
-@router.post("/upload/{reg_number}")
+@router.post("/upload/{reg_number:path}")
 async def upload_face(
     reg_number: str,
     file: UploadFile = File(...),
@@ -99,7 +99,7 @@ async def upload_face(
         "image_path": face_image.image_path
     }
 
-@router.get("/{reg_number}", response_model=list[face_schema.FaceImageOut])
+@router.get("/{reg_number:path}", response_model=list[face_schema.FaceImageOut])
 def get_face_images(
     reg_number: str,
     db: Session = Depends(get_db)

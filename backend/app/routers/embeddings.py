@@ -11,7 +11,7 @@ router = APIRouter(
     tags=["Face Embeddings"]
 )
 @router.post(
-    "/generate/{reg_number}",
+    "/generate/{reg_number:path}",
     response_model=schemas.FaceEmbeddingOut
 )
 def generate_embedding(
@@ -78,7 +78,7 @@ def generate_embedding(
     return face_embedding
 
 @router.get(
-    "/{reg_number}",
+    "/{reg_number:path}",
     response_model=list[schemas.FaceEmbeddingOut]
 )
 def get_embeddings(
