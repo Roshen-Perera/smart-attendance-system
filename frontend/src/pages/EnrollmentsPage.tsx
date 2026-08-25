@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, UserPlus, Trash2, GraduationCap, Search } from 'lucide-react';
+import { ArrowLeft, UserPlus, Search } from 'lucide-react';
 import { classesApi, studentsApi, enrollmentsApi } from '../api/endpoints';
-import { ClassCourse, Student, Enrollment } from '../types';
+import type { ClassCourse, Student, Enrollment } from '../types';
 import { Modal } from '../components/ui/Modal';
 import toast from 'react-hot-toast';
 
