@@ -49,7 +49,6 @@ export const EligibilityPage: React.FC = () => {
         setEligibilityData(results);
       } catch (err) {
         toast.error('Failed to calculate eligibility results');
-      } font: {
       } finally {
         setIsLoading(false);
       }
