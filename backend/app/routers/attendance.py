@@ -1,9 +1,12 @@
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app import models
 from app.schemas import attendance as schemas
+from app.dependencies import require_lecturer
+from app.logger import logger
 
 router = APIRouter(
     prefix="/attendance",
@@ -14,7 +17,8 @@ router = APIRouter(
 @router.post("", response_model=schemas.AttendanceOut, status_code=201)
 def mark_attendance(
     payload: schemas.AttendanceCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
     student = db.get(models.Student, payload.student_id)
     if not student:
@@ -46,6 +50,7 @@ def mark_attendance(
     db.add(attendance)
     db.commit()
     db.refresh(attendance)
+    logger.info(f"Manual attendance marked: student={student.reg_number}, session={payload.session_id} by user {current_user.email}")
 
     return attendance
 
@@ -100,10 +105,34 @@ def get_student_attendance(
     )
 
 
+@router.patch("/{attendance_id}/correct", response_model=schemas.AttendanceOut)
+def correct_attendance(
+    attendance_id: str,
+    new_student_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
+):
+    record = db.get(models.AttendanceRecord, attendance_id)
+    if not record:
+        raise HTTPException(404, "Attendance record not found")
+
+    student = db.get(models.Student, new_student_id)
+    if not student:
+        raise HTTPException(404, "Student not found")
+
+    record.student_id = new_student_id
+    record.confidence_score = None  # Manually corrected
+    db.commit()
+    db.refresh(record)
+    logger.info(f"Attendance {attendance_id} corrected to student {student.reg_number} by user {current_user.email}")
+    return record
+
+
 @router.delete("/{attendance_id}", status_code=204)
 def delete_attendance(
     attendance_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
     attendance = db.get(models.AttendanceRecord, attendance_id)
     if not attendance:
@@ -114,4 +143,5 @@ def delete_attendance(
 
     db.delete(attendance)
     db.commit()
+    logger.info(f"Attendance {attendance_id} deleted by user {current_user.email}")
     return None
