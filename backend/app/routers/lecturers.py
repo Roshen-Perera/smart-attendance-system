@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app import models
 from app.schemas import lecturer as schemas
+from app.dependencies import require_admin
+from app.logger import logger
 
 router = APIRouter(
     prefix="/lecturers",
@@ -12,7 +14,11 @@ router = APIRouter(
 
 
 @router.post("", response_model=schemas.LecturerOut, status_code=status.HTTP_201_CREATED)
-def create_lecturer(payload: schemas.LecturerCreate, db: Session = Depends(get_db)):
+def create_lecturer(
+    payload: schemas.LecturerCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
+):
     existing = db.query(models.Lecturer).filter(models.Lecturer.email == payload.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Lecturer with this email already exists")
@@ -21,6 +27,7 @@ def create_lecturer(payload: schemas.LecturerCreate, db: Session = Depends(get_d
     db.add(lecturer)
     db.commit()
     db.refresh(lecturer)
+    logger.info(f"Lecturer created: {lecturer.email} ({lecturer.name}) by admin {current_user.email}")
     return lecturer
 
 
@@ -42,7 +49,12 @@ def get_lecturer(lecturer_id: str, db: Session = Depends(get_db)):
 
 
 @router.put("/{lecturer_id}", response_model=schemas.LecturerOut)
-def update_lecturer(lecturer_id: str, payload: schemas.LecturerUpdate, db: Session = Depends(get_db)):
+def update_lecturer(
+    lecturer_id: str,
+    payload: schemas.LecturerUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
+):
     lecturer = db.query(models.Lecturer).filter(models.Lecturer.id == lecturer_id).first()
     if not lecturer:
         raise HTTPException(status_code=404, detail="Lecturer not found")
@@ -52,15 +64,21 @@ def update_lecturer(lecturer_id: str, payload: schemas.LecturerUpdate, db: Sessi
 
     db.commit()
     db.refresh(lecturer)
+    logger.info(f"Lecturer updated: {lecturer.email} by admin {current_user.email}")
     return lecturer
 
 
 @router.delete("/{lecturer_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_lecturer(lecturer_id: str, db: Session = Depends(get_db)):
+def delete_lecturer(
+    lecturer_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_admin)
+):
     lecturer = db.query(models.Lecturer).filter(models.Lecturer.id == lecturer_id).first()
     if not lecturer:
         raise HTTPException(status_code=404, detail="Lecturer not found")
 
     db.delete(lecturer)
     db.commit()
+    logger.info(f"Lecturer deleted: {lecturer_id} by admin {current_user.email}")
     return None
