@@ -5,13 +5,11 @@ import {
   Users,
   GraduationCap,
   BookOpen,
-  UserCheck,
   Calendar,
   BarChart3,
   FileCheck,
   Camera,
   LogOut,
-  ShieldAlert,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
