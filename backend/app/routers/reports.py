@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app import models
+from app.dependencies import require_lecturer
+from app.logger import logger
 
 router = APIRouter(
     prefix="/reports",
@@ -16,7 +18,8 @@ router = APIRouter(
 @router.get("/attendance/class/{class_id}")
 def export_class_attendance_csv(
     class_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
     classroom = db.get(models.Class, class_id)
     if not classroom:
@@ -76,13 +79,15 @@ def export_class_attendance_csv(
     output.seek(0)
     filename = f"attendance_report_{classroom.course_code}.csv"
     headers = {"Content-Disposition": f"attachment; filename={filename}"}
+    logger.info(f"Class attendance CSV report generated for {classroom.course_code} by user {current_user.email}")
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers=headers)
 
 
 @router.get("/attendance/session/{session_id}")
 def export_session_attendance_csv(
     session_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
 ):
     session = db.get(models.Session, session_id)
     if not session:
@@ -116,4 +121,5 @@ def export_session_attendance_csv(
     output.seek(0)
     filename = f"session_attendance_{session_id}.csv"
     headers = {"Content-Disposition": f"attachment; filename={filename}"}
+    logger.info(f"Session attendance CSV report generated for session {session_id} by user {current_user.email}")
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers=headers)
