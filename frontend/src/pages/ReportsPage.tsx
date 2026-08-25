@@ -52,7 +52,6 @@ export const ReportsPage: React.FC = () => {
       toast.success('Session attendance CSV report downloaded!');
     } catch (err) {
       toast.error('Failed to export session CSV report');
-    } font: {
     } finally {
       setIsExportingSession(false);
     }
