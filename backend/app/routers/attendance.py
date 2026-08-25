@@ -120,7 +120,9 @@ def correct_attendance(
     if not student:
         raise HTTPException(404, "Student not found")
 
+    # pyrefly: ignore [bad-assignment]
     record.student_id = new_student_id
+    # pyrefly: ignore [bad-assignment]
     record.confidence_score = None  # Manually corrected
     db.commit()
     db.refresh(record)
