@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, Edit2, Trash2, Users, Mail, Building, CreditCard } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2 } from 'lucide-react';
 import { lecturersApi } from '../api/endpoints';
-import { Lecturer, LecturerCreate } from '../types';
+import type { Lecturer, LecturerCreate } from '../types';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import toast from 'react-hot-toast';
