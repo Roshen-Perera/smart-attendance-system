@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Download, FileSpreadsheet, Calendar, BookOpen, CheckCircle2 } from 'lucide-react';
+import { Download, FileSpreadsheet, Calendar } from 'lucide-react';
 import { classesApi, sessionsApi, reportsApi } from '../api/endpoints';
-import { ClassCourse, Session } from '../types';
+import type { ClassCourse, Session } from '../types';
 import toast from 'react-hot-toast';
 
 export const ReportsPage: React.FC = () => {
