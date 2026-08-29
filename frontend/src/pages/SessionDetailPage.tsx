@@ -13,6 +13,10 @@ import {
   Circle,
   ShieldCheck,
   AlertCircle,
+  Maximize2,
+  Minimize2,
+  Users,
+  Sparkles,
 } from 'lucide-react';
 import * as faceapi from '@vladmandic/face-api';
 import {
@@ -48,7 +52,10 @@ export const SessionDetailPage: React.FC = () => {
   const [faceDetected, setFaceDetected] = useState(false);
   const [lastResult, setLastResult] = useState<{ name: string; reg: string; confidence: number; success: boolean } | null>(null);
   const [inCooldown, setInCooldown] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [recentScans, setRecentScans] = useState<Array<{ name: string; reg: string; confidence: number; timestamp: Date }>>([]);
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const captureCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -83,7 +90,7 @@ export const SessionDetailPage: React.FC = () => {
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
       });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -97,6 +104,30 @@ export const SessionDetailPage: React.FC = () => {
       toast.error('Camera access denied or unavailable');
     }
   }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    if (!isFullscreen) {
+      setIsFullscreen(true);
+      try {
+        if (containerRef.current?.requestFullscreen) {
+          await containerRef.current.requestFullscreen();
+        } else if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch {
+        // Fallback to CSS overlay
+      }
+    } else {
+      setIsFullscreen(false);
+      try {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        }
+      } catch {
+        // Fallback
+      }
+    }
+  }, [isFullscreen]);
 
   // Run recognition when a face locks
   const runRecognition = useCallback(async () => {
@@ -117,7 +148,9 @@ export const SessionDetailPage: React.FC = () => {
 
       if (result.attendance_id) {
         const confidence = Math.round((result.confidence_score || 0) * 100);
-        setLastResult({ name: result.student_name!, reg: result.student_reg_number!, confidence, success: true });
+        const scan = { name: result.student_name!, reg: result.student_reg_number!, confidence, timestamp: new Date() };
+        setLastResult({ ...scan, success: true });
+        setRecentScans((prev) => [scan, ...prev.filter((p) => p.reg !== scan.reg)].slice(0, 5));
         toast.success(`✓ ${result.student_name} — ${confidence}% match`);
         loadSessionData();
       } else if (result.message === 'Attendance already marked') {
