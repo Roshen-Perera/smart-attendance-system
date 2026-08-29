@@ -252,6 +252,40 @@ export const SessionDetailPage: React.FC = () => {
     return () => { if (detectionLoopRef.current) clearInterval(detectionLoopRef.current); };
   }, [isWebcamActive, modelsLoaded, runRecognition]);
 
+  // Fullscreen keyboard and change event listeners
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullscreen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+        setIsFullscreen(false);
+      }
+      if (
+        (e.key === 'f' || e.key === 'F') &&
+        isWebcamActive &&
+        !isManualModalOpen &&
+        !correctingRecord &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'SELECT'
+      ) {
+        toggleFullscreen();
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreen, isWebcamActive, isManualModalOpen, correctingRecord, toggleFullscreen]);
+
   // Manual & Correction modal state
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [selectedStudentForManual, setSelectedStudentForManual] = useState('');
@@ -391,34 +425,95 @@ export const SessionDetailPage: React.FC = () => {
         </div>
       </div>
 
-      {/* AI Auto-Scan Attendance Panel */}
+      {/* AI Auto-Scan Attendance Panel / Fullscreen View */}
       {session?.is_active && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
+        <div
+          ref={containerRef}
+          className={
+            isFullscreen
+              ? 'fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-3xl flex flex-col justify-between p-4 md:p-6 select-none overflow-hidden transition-all duration-300'
+              : 'bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 transition-all'
+          }
+        >
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20 shrink-0">
                 <ScanFace className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-100 text-base">Auto Face Recognition</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-slate-100 text-base">
+                    {isFullscreen ? session.topic || 'Class Attendance Kiosk' : 'Auto Face Recognition'}
+                  </h3>
+                  {classroom && (
+                    <span className="px-2 py-0.5 rounded-md bg-indigo-950 text-indigo-400 font-mono text-[11px] font-bold border border-indigo-800/50">
+                      {classroom.course_code}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-400">
                   {isWebcamActive
-                    ? 'Camera is live — faces detected automatically'
+                    ? isFullscreen
+                      ? 'Continuous high-accuracy face verification active. Step in front of the camera.'
+                      : 'Camera is live — faces detected automatically'
                     : 'Start the camera to begin continuous face scanning'}
                 </p>
               </div>
             </div>
+
             <div className="flex items-center gap-3">
               {isWebcamActive && (
-                <span className="flex items-center gap-1.5 text-[11px] text-rose-400 font-medium">
-                  <Circle className="w-2 h-2 fill-rose-400 animate-pulse" />
+                <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400 font-medium animate-pulse">
+                  <Circle className="w-2 h-2 fill-rose-400" />
                   LIVE
                 </span>
               )}
+
+              {/* Roster Live Stat Badge */}
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-medium text-slate-300">
+                <Users className="w-3.5 h-3.5 text-indigo-400" />
+                <span>
+                  <strong className="text-emerald-400">{attendanceRecords.length}</strong> / {enrolledStudents.length} Present
+                </span>
+                {enrolledStudents.length > 0 && (
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    ({Math.round((attendanceRecords.length / enrolledStudents.length) * 100)}%)
+                  </span>
+                )}
+              </div>
+
               {!modelsLoaded && (
                 <span className="text-[11px] text-amber-400 animate-pulse">Loading AI…</span>
               )}
+
+              {/* Fullscreen Toggle Button */}
+              {isWebcamActive && (
+                <button
+                  onClick={toggleFullscreen}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                    isFullscreen
+                      ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                      : 'bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 shadow-lg shadow-indigo-600/10'
+                  }`}
+                  title={isFullscreen ? 'Exit Full Screen (Esc)' : 'Enter Full Screen (F)'}
+                >
+                  {isFullscreen ? (
+                    <>
+                      <Minimize2 className="w-4 h-4 text-indigo-400" />
+                      <span>Exit Full Screen</span>
+                      <kbd className="hidden md:inline px-1 py-0.5 bg-slate-900 border border-slate-700 rounded text-[10px] text-slate-400">Esc</kbd>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize2 className="w-4 h-4 text-indigo-400" />
+                      <span>Full Screen</span>
+                      <kbd className="hidden md:inline px-1 py-0.5 bg-indigo-950/80 border border-indigo-800 rounded text-[10px] text-indigo-300">F</kbd>
+                    </>
+                  )}
+                </button>
+              )}
+
               {!isWebcamActive ? (
                 <button
                   onClick={startCamera}
@@ -431,7 +526,7 @@ export const SessionDetailPage: React.FC = () => {
               ) : (
                 <button
                   onClick={stopCamera}
-                  className="px-4 py-2 bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-semibold transition-all"
+                  className="px-4 py-2 bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-semibold transition-all"
                 >
                   Stop Camera
                 </button>
@@ -439,99 +534,226 @@ export const SessionDetailPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-5 items-stretch">
-            {/* Camera viewport — takes 3 cols */}
-            <div className="md:col-span-3 relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden" style={{ minHeight: 260 }}>
-              <video
-                ref={videoRef}
-                playsInline
-                muted
-                className="w-full block"
-                style={{ maxHeight: 320, objectFit: 'cover', display: isWebcamActive ? 'block' : 'none', transform: 'scaleX(-1)' }}
-              />
-              <canvas
-                ref={overlayCanvasRef}
-                className="absolute inset-0 w-full h-full pointer-events-none"
-                style={{ transform: 'scaleX(-1)', display: isWebcamActive ? 'block' : 'none' }}
-              />
-              <canvas ref={captureCanvasRef} className="hidden" />
+          {/* Body Section */}
+          {isFullscreen ? (
+            /* FULL SCREEN KIOSK BODY */
+            <div className="flex-1 flex flex-col items-center justify-between min-h-0 w-full gap-4 my-auto">
+              {/* Centered Camera Stage */}
+              <div className="relative flex-1 w-full flex items-center justify-center min-h-0">
+                <div className="relative h-full max-h-[72vh] aspect-video rounded-3xl overflow-hidden shadow-2xl border-2 border-slate-800/80 bg-black flex items-center justify-center">
+                  <video
+                    ref={videoRef}
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover block"
+                    style={{
+                      display: isWebcamActive ? 'block' : 'none',
+                      transform: 'scaleX(-1)',
+                    }}
+                  />
+                  <canvas
+                    ref={overlayCanvasRef}
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{ transform: 'scaleX(-1)', display: isWebcamActive ? 'block' : 'none' }}
+                  />
+                  <canvas ref={captureCanvasRef} className="hidden" />
 
-              {!isWebcamActive && (
-                <div className="flex flex-col items-center justify-center h-64 gap-3">
-                  <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-dashed border-slate-700 flex items-center justify-center">
-                    <Camera className="w-9 h-9 text-slate-600" />
-                  </div>
-                  <p className="text-xs text-slate-500">Camera inactive — click Start Camera</p>
-                </div>
-              )}
-
-              {/* Status overlay */}
-              {isWebcamActive && (
-                <div className="absolute bottom-0 inset-x-0 p-2.5 bg-gradient-to-t from-slate-950/90 to-transparent">
-                  <p className={`text-center text-[11px] font-medium ${
-                    inCooldown ? 'text-indigo-400' :
-                    isScanning ? 'text-amber-400 animate-pulse' :
-                    faceDetected ? 'text-emerald-400' : 'text-slate-400'
-                  }`}>
-                    {inCooldown ? `Next scan in ${(COOLDOWN_MS / 1000).toFixed(1)}s…` :
-                     isScanning ? 'Identifying face…' :
-                     faceDetected ? 'Face locked — identifying…' :
-                     'Waiting for face…'}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Status panel — takes 2 cols */}
-            <div className="md:col-span-2 flex flex-col gap-4">
-              {/* How it works */}
-              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">How it works</p>
-                <div className="space-y-2">
-                  {[
-                    { icon: '①', label: 'Start Camera once', active: isWebcamActive },
-                    { icon: '②', label: 'Student enters camera view', active: isWebcamActive && faceDetected },
-                    { icon: '③', label: 'Face auto-locks (hold ~1s)', active: isWebcamActive && faceDetected && !inCooldown },
-                    { icon: '④', label: 'Attendance marked automatically', active: !!lastResult?.success },
-                  ].map((step) => (
-                    <div key={step.label} className={`flex items-center gap-2.5 text-[11px] ${step.active ? 'text-emerald-400' : 'text-slate-500'}`}>
-                      <span className="font-mono font-bold">{step.icon}</span>
-                      <span>{step.label}</span>
-                      {step.active && <CheckCircle2 className="w-3 h-3 ml-auto shrink-0" />}
+                  {/* Status Overlay Pill in Video */}
+                  <div className="absolute top-4 inset-x-0 flex justify-center pointer-events-none">
+                    <div className={`px-4 py-1.5 rounded-full backdrop-blur-md border text-xs font-semibold shadow-xl transition-all ${
+                      inCooldown
+                        ? 'bg-indigo-950/80 border-indigo-800 text-indigo-300'
+                        : isScanning
+                        ? 'bg-amber-950/80 border-amber-800 text-amber-300 animate-pulse'
+                        : faceDetected
+                        ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300'
+                        : 'bg-slate-900/80 border-slate-700 text-slate-300'
+                    }`}>
+                      {inCooldown ? `⏳ Next scan in ${(COOLDOWN_MS / 1000).toFixed(1)}s…` :
+                       isScanning ? '⚡ Verifying face biometric…' :
+                       faceDetected ? '🎯 Face locked — identifying student…' :
+                       '👁️ Look at the camera to check in'}
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Pop-up Student Recognition Success Banner */}
+                  {lastResult?.success && inCooldown && (
+                    <div className="absolute bottom-6 inset-x-6 mx-auto max-w-md bg-slate-950/95 border-2 border-emerald-500/60 rounded-2xl p-4 shadow-2xl backdrop-blur-xl flex items-center gap-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                      <div className="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-lg shadow-emerald-500/20">
+                        <ShieldCheck className="w-7 h-7" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-white text-base truncate">{lastResult.name}</p>
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono text-[10px] font-semibold border border-emerald-500/30 shrink-0">
+                            {lastResult.confidence}% match
+                          </span>
+                        </div>
+                        {lastResult.reg && (
+                          <p className="text-xs font-mono text-emerald-400 font-medium mt-0.5">{lastResult.reg}</p>
+                        )}
+                        <p className="text-[11px] text-emerald-300/80 mt-1 flex items-center gap-1 font-medium">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Attendance Verified & Recorded
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Last recognition result */}
-              <div className={`flex-1 rounded-2xl border p-4 flex flex-col justify-center items-center text-center gap-2 transition-all ${
-                lastResult?.success
-                  ? 'bg-emerald-500/5 border-emerald-500/30'
-                  : 'bg-slate-950 border-slate-800'
-              }`}>
-                {lastResult?.success ? (
+              {/* Fullscreen Footer: Recent Attendees Ticker & Actions */}
+              <div className="w-full max-w-5xl flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-slate-800/80">
+                {/* Recent attendees */}
+                <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto py-1">
+                  <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                    Recent Check-ins:
+                  </span>
+                  {recentScans.length === 0 ? (
+                    <span className="text-xs text-slate-500 italic">No scans recorded yet</span>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      {recentScans.map((scan, i) => (
+                        <div
+                          key={scan.reg + i}
+                          className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-200 shrink-0 animate-in fade-in"
+                        >
+                          <div className="w-5 h-5 rounded-md bg-emerald-950 text-emerald-400 font-bold flex items-center justify-center text-[10px] border border-emerald-800/50">
+                            {scan.name.charAt(0)}
+                          </div>
+                          <span className="font-medium text-slate-200">{scan.name.split(' ')[0]}</span>
+                          <span className="text-[10px] text-emerald-400 font-semibold">{scan.confidence}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick actions */}
+                <div className="flex items-center gap-3 ml-auto shrink-0">
+                  <button
+                    onClick={() => setIsManualModalOpen(true)}
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 text-xs font-semibold transition-colors"
+                  >
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Mark Manually</span>
+                  </button>
+                  <button
+                    onClick={toggleFullscreen}
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+                  >
+                    <Minimize2 className="w-3.5 h-3.5" />
+                    <span>Minimize View</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* STANDARD INLINE VIEW */
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-5 items-stretch">
+              {/* Camera viewport — takes 3 cols */}
+              <div className="md:col-span-3 relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex flex-col justify-center" style={{ minHeight: 280 }}>
+                <video
+                  ref={videoRef}
+                  playsInline
+                  muted
+                  className="w-full block"
+                  style={{ maxHeight: 380, objectFit: 'cover', display: isWebcamActive ? 'block' : 'none', transform: 'scaleX(-1)' }}
+                />
+                <canvas
+                  ref={overlayCanvasRef}
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ transform: 'scaleX(-1)', display: isWebcamActive ? 'block' : 'none' }}
+                />
+                <canvas ref={captureCanvasRef} className="hidden" />
+
+                {!isWebcamActive && (
+                  <div className="flex flex-col items-center justify-center h-72 gap-3">
+                    <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-dashed border-slate-700 flex items-center justify-center">
+                      <Camera className="w-9 h-9 text-slate-600" />
+                    </div>
+                    <p className="text-xs text-slate-500">Camera inactive — click Start Camera</p>
+                  </div>
+                )}
+
+                {/* Status overlay */}
+                {isWebcamActive && (
                   <>
-                    <ShieldCheck className="w-8 h-8 text-emerald-400" />
-                    <p className="text-emerald-400 font-bold text-sm">{lastResult.name}</p>
-                    {lastResult.reg && <p className="text-emerald-300/70 text-[10px] font-mono">{lastResult.reg}</p>}
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold border border-emerald-500/30">
-                      {lastResult.confidence}% match
-                    </span>
-                  </>
-                ) : isScanning ? (
-                  <>
-                    <ScanFace className="w-8 h-8 text-amber-400 animate-pulse" />
-                    <p className="text-amber-400 text-xs font-medium">Scanning…</p>
-                  </>
-                ) : (
-                  <>
-                    <AlertCircle className="w-7 h-7 text-slate-600" />
-                    <p className="text-slate-500 text-[11px]">No match yet</p>
+                    <div className="absolute top-3 right-3 flex items-center gap-2">
+                      <button
+                        onClick={toggleFullscreen}
+                        className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-white backdrop-blur-md transition-all shadow-lg"
+                        title="Expand to Full Screen (F)"
+                      >
+                        <Maximize2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="absolute bottom-0 inset-x-0 p-2.5 bg-gradient-to-t from-slate-950/90 to-transparent">
+                      <p className={`text-center text-[11px] font-medium ${
+                        inCooldown ? 'text-indigo-400' :
+                        isScanning ? 'text-amber-400 animate-pulse' :
+                        faceDetected ? 'text-emerald-400' : 'text-slate-400'
+                      }`}>
+                        {inCooldown ? `Next scan in ${(COOLDOWN_MS / 1000).toFixed(1)}s…` :
+                         isScanning ? 'Identifying face…' :
+                         faceDetected ? 'Face locked — identifying…' :
+                         'Waiting for face…'}
+                      </p>
+                    </div>
                   </>
                 )}
               </div>
+
+              {/* Status panel — takes 2 cols */}
+              <div className="md:col-span-2 flex flex-col gap-4">
+                {/* How it works */}
+                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">How it works</p>
+                  <div className="space-y-2">
+                    {[
+                      { icon: '①', label: 'Start Camera or enter Full Screen', active: isWebcamActive },
+                      { icon: '②', label: 'Student enters camera view', active: isWebcamActive && faceDetected },
+                      { icon: '③', label: 'Face auto-locks (hold ~1s)', active: isWebcamActive && faceDetected && !inCooldown },
+                      { icon: '④', label: 'Attendance marked automatically', active: !!lastResult?.success },
+                    ].map((step) => (
+                      <div key={step.label} className={`flex items-center gap-2.5 text-[11px] ${step.active ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        <span className="font-mono font-bold">{step.icon}</span>
+                        <span>{step.label}</span>
+                        {step.active && <CheckCircle2 className="w-3 h-3 ml-auto shrink-0" />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Last recognition result */}
+                <div className={`flex-1 rounded-2xl border p-4 flex flex-col justify-center items-center text-center gap-2 transition-all ${
+                  lastResult?.success
+                    ? 'bg-emerald-500/5 border-emerald-500/30'
+                    : 'bg-slate-950 border-slate-800'
+                }`}>
+                  {lastResult?.success ? (
+                    <>
+                      <ShieldCheck className="w-8 h-8 text-emerald-400" />
+                      <p className="text-emerald-400 font-bold text-sm">{lastResult.name}</p>
+                      {lastResult.reg && <p className="text-emerald-300/70 text-[10px] font-mono">{lastResult.reg}</p>}
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold border border-emerald-500/30">
+                        {lastResult.confidence}% match
+                      </span>
+                    </>
+                  ) : isScanning ? (
+                    <>
+                      <ScanFace className="w-8 h-8 text-amber-400 animate-pulse" />
+                      <p className="text-amber-400 text-xs font-medium">Scanning…</p>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="w-7 h-7 text-slate-600" />
+                      <p className="text-slate-500 text-[11px]">No match yet</p>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 

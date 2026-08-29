@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft, Camera, Cpu, CheckCircle2, Trash2, ShieldCheck,
   Upload, Video, Circle, ScanFace, AlertCircle, RefreshCw,
-  ZapIcon
+  ZapIcon, Maximize2, Minimize2
 } from 'lucide-react';
 import * as faceapi from '@vladmandic/face-api';
 import { facesApi } from '../api/endpoints';
@@ -41,6 +41,7 @@ export const StudentFacePage: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
 
   // Camera tab state
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -58,6 +59,7 @@ export const StudentFacePage: React.FC = () => {
   const [shots, setShots] = useState<CaptureShot[]>([]);
   const [faceDetected, setFaceDetected] = useState(false);
   const [allDone, setAllDone] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const loadStudentData = useCallback(async () => {
     if (!decodedRegNumber) return;
@@ -112,10 +114,64 @@ export const StudentFacePage: React.FC = () => {
     }
   };
 
+  const toggleFullscreen = useCallback(async () => {
+    if (!isFullscreen) {
+      setIsFullscreen(true);
+      try {
+        if (containerRef.current?.requestFullscreen) {
+          await containerRef.current.requestFullscreen();
+        } else if (document.documentElement.requestFullscreen) {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch {
+        // Fallback
+      }
+    } else {
+      setIsFullscreen(false);
+      try {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        }
+      } catch {
+        // Fallback
+      }
+    }
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullscreen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+        setIsFullscreen(false);
+      }
+      if (
+        (e.key === 'f' || e.key === 'F') &&
+        cameraActive &&
+        activeTab === 'camera' &&
+        document.activeElement?.tagName !== 'INPUT'
+      ) {
+        toggleFullscreen();
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreen, cameraActive, activeTab, toggleFullscreen]);
+
   const startCamera = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
       });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -420,13 +476,20 @@ export const StudentFacePage: React.FC = () => {
           )}
 
           {/* Camera viewport */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+          <div
+            ref={containerRef}
+            className={
+              isFullscreen
+                ? 'fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-3xl flex flex-col justify-between p-4 md:p-6 select-none overflow-hidden'
+                : 'bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden'
+            }
+          >
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
               <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
                 <ScanFace className="w-4 h-4 text-indigo-400" />
-                Face Enrollment Camera
+                Face Enrollment Camera {decodedRegNumber && <span className="font-mono text-indigo-400">({decodedRegNumber})</span>}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 {cameraActive && (
                   <span className="flex items-center gap-1.5 text-[11px] text-rose-400 font-medium">
                     <Circle className="w-2 h-2 fill-rose-400 animate-pulse" />
@@ -439,94 +502,123 @@ export const StudentFacePage: React.FC = () => {
                 {modelsLoaded && !cameraActive && (
                   <span className="text-[11px] text-emerald-400">AI Ready</span>
                 )}
+                {cameraActive && (
+                  <button
+                    onClick={toggleFullscreen}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-all"
+                    title={isFullscreen ? 'Exit Full Screen (Esc)' : 'Full Screen (F)'}
+                  >
+                    {isFullscreen ? (
+                      <>
+                        <Minimize2 className="w-3.5 h-3.5" />
+                        <span>Exit Full Screen</span>
+                      </>
+                    ) : (
+                      <>
+                        <Maximize2 className="w-3.5 h-3.5" />
+                        <span>Full Screen</span>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 
-            <div className="relative bg-slate-950" style={{ minHeight: 360 }}>
-              <video
-                ref={videoRef}
-                className="w-full block"
-                style={{
-                  maxHeight: 420,
-                  objectFit: 'cover',
-                  display: cameraActive ? 'block' : 'none',
-                  transform: 'scaleX(-1)',
-                }}
-                playsInline
-                muted
-              />
-              <canvas
-                ref={overlayCanvasRef}
-                className="absolute inset-0 w-full h-full pointer-events-none"
-                style={{ transform: 'scaleX(-1)', display: cameraActive ? 'block' : 'none' }}
-              />
-              <canvas ref={canvasRef} className="hidden" />
+            <div className={isFullscreen ? "relative flex-1 flex items-center justify-center min-h-0 bg-slate-950 p-4" : "relative bg-slate-950"} style={isFullscreen ? undefined : { minHeight: 360 }}>
+              <div className={isFullscreen ? "relative h-full max-h-[75vh] aspect-video rounded-2xl overflow-hidden shadow-2xl border border-slate-800 bg-black flex items-center justify-center" : "relative w-full"}>
+                <video
+                  ref={videoRef}
+                  className="w-full h-full block"
+                  style={{
+                    maxHeight: isFullscreen ? undefined : 420,
+                    objectFit: 'cover',
+                    display: cameraActive ? 'block' : 'none',
+                    transform: 'scaleX(-1)',
+                  }}
+                  playsInline
+                  muted
+                />
+                <canvas
+                  ref={overlayCanvasRef}
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                  style={{ transform: 'scaleX(-1)', display: cameraActive ? 'block' : 'none' }}
+                />
+                <canvas ref={canvasRef} className="hidden" />
 
-              {!cameraActive && (
-                <div className="flex flex-col items-center justify-center h-80 gap-4">
-                  <div className="w-24 h-24 rounded-full bg-slate-800 border-2 border-dashed border-slate-700 flex items-center justify-center">
-                    <Camera className="w-10 h-10 text-slate-600" />
+                {!cameraActive && (
+                  <div className="flex flex-col items-center justify-center h-80 gap-4">
+                    <div className="w-24 h-24 rounded-full bg-slate-800 border-2 border-dashed border-slate-700 flex items-center justify-center">
+                      <Camera className="w-10 h-10 text-slate-600" />
+                    </div>
+                    <div className="text-center space-y-1">
+                      <p className="text-sm text-slate-400 font-medium">Camera is off</p>
+                      <p className="text-xs text-slate-600">Start enrollment to begin face capture</p>
+                    </div>
                   </div>
-                  <div className="text-center space-y-1">
-                    <p className="text-sm text-slate-400 font-medium">Camera is off</p>
-                    <p className="text-xs text-slate-600">Start enrollment to begin face capture</p>
-                  </div>
-                </div>
-              )}
+                )}
 
-              {cameraActive && (
-                <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-slate-950/90 to-transparent">
-                  <p className={`text-center text-xs font-medium ${faceDetected ? 'text-emerald-400' : 'text-amber-400'}`}>
-                    {getStatusLabel()}
-                  </p>
-                </div>
-              )}
-
-              {allDone && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/90">
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
-                    <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                {cameraActive && (
+                  <div className="absolute bottom-0 inset-x-0 p-3 bg-gradient-to-t from-slate-950/90 to-transparent">
+                    <p className={`text-center text-xs font-medium ${faceDetected ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {getStatusLabel()}
+                    </p>
                   </div>
-                  <p className="text-emerald-400 font-semibold text-sm">Enrollment Complete!</p>
-                  <p className="text-slate-400 text-xs">3 face embeddings generated successfully</p>
-                </div>
-              )}
+                )}
+
+                {allDone && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/90">
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                    </div>
+                    <p className="text-emerald-400 font-semibold text-sm">Enrollment Complete!</p>
+                    <p className="text-slate-400 text-xs">3 face embeddings generated successfully</p>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="px-5 py-4 border-t border-slate-800 flex items-center gap-3">
-              {!cameraActive ? (
-                <button
-                  onClick={startCamera}
-                  disabled={!modelsLoaded || modelsError}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-indigo-500/20"
-                >
-                  <Video className="w-4 h-4" />
-                  Start Enrollment
-                </button>
-              ) : (
-                <button
-                  onClick={stopCamera}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-rose-400 text-xs font-semibold rounded-xl transition-all"
-                >
-                  <Circle className="w-3.5 h-3.5 fill-rose-400" />
-                  Stop Camera
-                </button>
-              )}
+            <div className="px-5 py-4 border-t border-slate-800 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                {!cameraActive ? (
+                  <button
+                    onClick={startCamera}
+                    disabled={!modelsLoaded || modelsError}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+                  >
+                    <Video className="w-4 h-4" />
+                    Start Enrollment
+                  </button>
+                ) : (
+                  <button
+                    onClick={stopCamera}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-rose-400 text-xs font-semibold rounded-xl transition-all"
+                  >
+                    <Circle className="w-3.5 h-3.5 fill-rose-400" />
+                    Stop Camera
+                  </button>
+                )}
 
-              {(allDone || shots.length > 0) && !cameraActive && (
-                <button
-                  onClick={() => {
-                    setShots([]);
-                    setAllDone(false);
-                    setCurrentPoseIndex(0);
-                    currentPoseIndexRef.current = 0;
-                    startCamera();
-                  }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl transition-all"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Re-enroll
-                </button>
+                {(allDone || shots.length > 0) && !cameraActive && (
+                  <button
+                    onClick={() => {
+                      setShots([]);
+                      setAllDone(false);
+                      setCurrentPoseIndex(0);
+                      currentPoseIndexRef.current = 0;
+                      startCamera();
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium rounded-xl transition-all"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Re-enroll
+                  </button>
+                )}
+              </div>
+
+              {isFullscreen && cameraActive && (
+                <div className="flex items-center gap-2 text-xs text-indigo-300 font-medium">
+                  <span>Current Pose: <strong>{POSES[currentPoseIndex]}</strong> ({currentPoseIndex + 1}/3)</span>
+                </div>
               )}
             </div>
           </div>
