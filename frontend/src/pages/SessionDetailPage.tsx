@@ -16,7 +16,6 @@ import {
   Maximize2,
   Minimize2,
   Users,
-  Sparkles,
 } from 'lucide-react';
 import * as faceapi from '@vladmandic/face-api';
 import {
@@ -44,6 +43,13 @@ export const SessionDetailPage: React.FC = () => {
   const [enrolledStudents, setEnrolledStudents] = useState<Student[]>([]);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Manual & Correction modal state
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [selectedStudentForManual, setSelectedStudentForManual] = useState('');
+  const [correctingRecord, setCorrectingRecord] = useState<AttendanceRecord | null>(null);
+  const [newStudentIdForCorrection, setNewStudentIdForCorrection] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // AI Recognition state
   const [modelsLoaded, setModelsLoaded] = useState(false);
@@ -285,13 +291,6 @@ export const SessionDetailPage: React.FC = () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isFullscreen, isWebcamActive, isManualModalOpen, correctingRecord, toggleFullscreen]);
-
-  // Manual & Correction modal state
-  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
-  const [selectedStudentForManual, setSelectedStudentForManual] = useState('');
-  const [correctingRecord, setCorrectingRecord] = useState<AttendanceRecord | null>(null);
-  const [newStudentIdForCorrection, setNewStudentIdForCorrection] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadSessionData = async () => {
     if (!sessionId) return;
