@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -9,8 +9,12 @@ import {
   UserCheck,
   Edit2,
   Trash2,
-  Sparkles,
+  ScanFace,
+  Circle,
+  ShieldCheck,
+  AlertCircle,
 } from 'lucide-react';
+import * as faceapi from '@vladmandic/face-api';
 import {
   sessionsApi,
   classesApi,
@@ -22,6 +26,12 @@ import type { Session, ClassCourse, Student, AttendanceRecord } from '../types';
 import { Modal } from '../components/ui/Modal';
 import toast from 'react-hot-toast';
 
+// How many consecutive detection frames before we capture (≈1s at 80ms interval)
+const LOCK_FRAMES = 12;
+// Cooldown in ms after a recognition attempt before scanning again
+const COOLDOWN_MS = 3500;
+const DETECTION_INTERVAL_MS = 80;
+
 export const SessionDetailPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
 
@@ -32,9 +42,182 @@ export const SessionDetailPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   // AI Recognition state
+  const [modelsLoaded, setModelsLoaded] = useState(false);
   const [isWebcamActive, setIsWebcamActive] = useState(false);
-  const [isRecognizing, setIsRecognizing] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [lastResult, setLastResult] = useState<{ name: string; reg: string; confidence: number; success: boolean } | null>(null);
+  const [inCooldown, setInCooldown] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const captureCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const detectionLoopRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lockFramesRef = useRef(0);
+  const isScanningRef = useRef(false); // avoids stale closure in interval
+
+  // Load face-api models once
+  useEffect(() => {
+    faceapi.nets.tinyFaceDetector.loadFromUri('/models')
+      .then(() => setModelsLoaded(true))
+      .catch(() => toast.error('Failed to load face detection models'));
+    return () => stopCamera();
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    if (detectionLoopRef.current) clearInterval(detectionLoopRef.current);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    const overlay = overlayCanvasRef.current;
+    if (overlay) overlay.getContext('2d')?.clearRect(0, 0, overlay.width, overlay.height);
+    setIsWebcamActive(false);
+    setIsScanning(false);
+    setFaceDetected(false);
+    isScanningRef.current = false;
+    lockFramesRef.current = 0;
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setIsWebcamActive(true);
+      lockFramesRef.current = 0;
+      isScanningRef.current = false;
+    } catch {
+      toast.error('Camera access denied or unavailable');
+    }
+  }, []);
+
+  // Run recognition when a face locks
+  const runRecognition = useCallback(async () => {
+    if (!videoRef.current || !sessionId) return;
+    isScanningRef.current = true;
+    setIsScanning(true);
+
+    const canvas = captureCanvasRef.current || document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth || 640;
+    canvas.height = videoRef.current.videoHeight || 480;
+    canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0);
+
+    try {
+      const blob = await new Promise<Blob>((res) =>
+        canvas.toBlob((b) => res(b!), 'image/jpeg', 0.92)
+      );
+      const result = await recognitionApi.recognize(sessionId, blob);
+
+      if (result.attendance_id) {
+        const confidence = Math.round((result.confidence_score || 0) * 100);
+        setLastResult({ name: result.student_name!, reg: result.student_reg_number!, confidence, success: true });
+        toast.success(`✓ ${result.student_name} — ${confidence}% match`);
+        loadSessionData();
+      } else if (result.message === 'Attendance already marked') {
+        setLastResult({ name: result.student_name || 'Student', reg: '', confidence: Math.round((result.confidence_score || 0) * 100), success: true });
+      } else {
+        setLastResult(null);
+      }
+    } catch {
+      setLastResult(null);
+    } finally {
+      // Cooldown before next scan
+      setInCooldown(true);
+      setTimeout(() => {
+        setInCooldown(false);
+        isScanningRef.current = false;
+        setIsScanning(false);
+        lockFramesRef.current = 0;
+      }, COOLDOWN_MS);
+    }
+  }, [sessionId]);
+
+  // Automated detection loop
+  useEffect(() => {
+    if (!isWebcamActive || !modelsLoaded) return;
+
+    detectionLoopRef.current = setInterval(async () => {
+      if (isScanningRef.current) return; // busy
+
+      const video = videoRef.current;
+      const overlay = overlayCanvasRef.current;
+      if (!video || !overlay || video.readyState < 2) return;
+
+      overlay.width = video.videoWidth;
+      overlay.height = video.videoHeight;
+      const ctx = overlay.getContext('2d');
+      if (!ctx) return;
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+      const detection = await faceapi.detectSingleFace(
+        video,
+        new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 })
+      );
+
+      if (!detection) {
+        setFaceDetected(false);
+        lockFramesRef.current = 0;
+        return;
+      }
+
+      setFaceDetected(true);
+      const { box } = detection;
+      const isGood =
+        box.width > overlay.width * 0.12 &&
+        box.height > overlay.height * 0.12 &&
+        box.x > overlay.width * 0.05 &&
+        box.x + box.width < overlay.width * 0.95;
+
+      // Draw bounding box
+      ctx.strokeStyle = isGood ? '#22c55e' : '#f59e0b';
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = ctx.strokeStyle;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.rect(box.x, box.y, box.width, box.height);
+      ctx.stroke();
+
+      // Corner accents
+      const cs = 14;
+      ctx.lineWidth = 3.5;
+      ctx.shadowBlur = 0;
+      ([[box.x, box.y, cs, cs], [box.x + box.width, box.y, -cs, cs],
+        [box.x, box.y + box.height, cs, -cs], [box.x + box.width, box.y + box.height, -cs, -cs]] as [number,number,number,number][]
+      ).forEach(([cx, cy, dx, dy]) => {
+        ctx.beginPath();
+        ctx.moveTo(cx + dx, cy);
+        ctx.lineTo(cx, cy);
+        ctx.lineTo(cx, cy + dy);
+        ctx.stroke();
+      });
+
+      if (isGood) {
+        lockFramesRef.current += 1;
+        // Lock progress bar
+        const progress = Math.min(lockFramesRef.current / LOCK_FRAMES, 1);
+        ctx.fillStyle = 'rgba(34,197,94,0.2)';
+        ctx.fillRect(box.x, box.y + box.height + 4, box.width * progress, 4);
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(box.x, box.y + box.height + 4, box.width, 4);
+
+        if (lockFramesRef.current >= LOCK_FRAMES) {
+          runRecognition();
+        }
+      } else {
+        lockFramesRef.current = Math.max(0, lockFramesRef.current - 2);
+      }
+    }, DETECTION_INTERVAL_MS);
+
+    return () => { if (detectionLoopRef.current) clearInterval(detectionLoopRef.current); };
+  }, [isWebcamActive, modelsLoaded, runRecognition]);
 
   // Manual & Correction modal state
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -73,82 +256,7 @@ export const SessionDetailPage: React.FC = () => {
     loadSessionData();
   }, [sessionId]);
 
-  // Webcam stream handlers
-  const startWebcam = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setIsWebcamActive(true);
-    } catch (err) {
-      toast.error('Camera access denied or webcam unavailable');
-    }
-  };
 
-  const stopWebcam = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach((t) => t.stop());
-      videoRef.current.srcObject = null;
-    }
-    setIsWebcamActive(false);
-  };
-
-  const captureFrameAndRecognize = async () => {
-    if (!videoRef.current || !sessionId) return;
-    try {
-      setIsRecognizing(true);
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth || 640;
-      canvas.height = videoRef.current.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          toast.error('Failed to capture camera frame');
-          setIsRecognizing(false);
-          return;
-        }
-        try {
-          const res = await recognitionApi.recognize(sessionId, blob);
-          if (res.attendance_id) {
-            toast.success(`Recognized: ${res.student_name} (${res.student_reg_number}) - ${Math.round((res.confidence_score || 0) * 100)}% match!`);
-            loadSessionData();
-          } else {
-            toast.error(res.message || 'Face not recognized');
-          }
-        } catch (err: any) {
-          toast.error(err.response?.data?.detail || 'Recognition failed');
-        } finally {
-          setIsRecognizing(false);
-        }
-      }, 'image/jpeg');
-    } catch (err) {
-      toast.error('Webcam capture error');
-      setIsRecognizing(false);
-    }
-  };
-
-  const handleFileUploadRecognize = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || !e.target.files[0] || !sessionId) return;
-    const file = e.target.files[0];
-    try {
-      setIsRecognizing(true);
-      const res = await recognitionApi.recognize(sessionId, file);
-      if (res.attendance_id) {
-        toast.success(`Recognized: ${res.student_name} (${res.student_reg_number}) - ${Math.round((res.confidence_score || 0) * 100)}% match!`);
-        loadSessionData();
-      } else {
-        toast.error(res.message || 'Face not recognized');
-      }
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Recognition failed');
-    } finally {
-      setIsRecognizing(false);
-    }
-  };
 
   const handleManualMark = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -250,33 +358,47 @@ export const SessionDetailPage: React.FC = () => {
         </div>
       </div>
 
-      {/* AI Live Face Recognition Panel */}
+      {/* AI Auto-Scan Attendance Panel */}
       {session?.is_active && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
+          {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg">
-                <Camera className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
+                <ScanFace className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-100 text-base">AI Live Face Recognition</h3>
-                <p className="text-xs text-slate-400">Capture face via camera or upload snapshot to verify attendance</p>
+                <h3 className="font-bold text-slate-100 text-base">Auto Face Recognition</h3>
+                <p className="text-xs text-slate-400">
+                  {isWebcamActive
+                    ? 'Camera is live — faces detected automatically'
+                    : 'Start the camera to begin continuous face scanning'}
+                </p>
               </div>
             </div>
-
             <div className="flex items-center gap-3">
+              {isWebcamActive && (
+                <span className="flex items-center gap-1.5 text-[11px] text-rose-400 font-medium">
+                  <Circle className="w-2 h-2 fill-rose-400 animate-pulse" />
+                  LIVE
+                </span>
+              )}
+              {!modelsLoaded && (
+                <span className="text-[11px] text-amber-400 animate-pulse">Loading AI…</span>
+              )}
               {!isWebcamActive ? (
                 <button
-                  onClick={startWebcam}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2"
+                  onClick={startCamera}
+                  disabled={!modelsLoaded}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2"
                 >
                   <Camera className="w-4 h-4" />
-                  <span>Start Camera</span>
+                  Start Camera
                 </button>
               ) : (
                 <button
-                  onClick={stopWebcam}
-                  className="px-3.5 py-2 bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-semibold transition-all"
+                  onClick={stopCamera}
+                  className="px-4 py-2 bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-semibold transition-all"
                 >
                   Stop Camera
                 </button>
@@ -284,49 +406,97 @@ export const SessionDetailPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-            {/* Webcam Video viewport */}
-            <div className="relative bg-slate-950 border border-slate-800 rounded-2xl h-64 overflow-hidden flex items-center justify-center">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-5 items-stretch">
+            {/* Camera viewport — takes 3 cols */}
+            <div className="md:col-span-3 relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden" style={{ minHeight: 260 }}>
               <video
                 ref={videoRef}
-                autoPlay
                 playsInline
-                className={`w-full h-full object-cover ${!isWebcamActive && 'hidden'}`}
+                muted
+                className="w-full block"
+                style={{ maxHeight: 320, objectFit: 'cover', display: isWebcamActive ? 'block' : 'none', transform: 'scaleX(-1)' }}
               />
+              <canvas
+                ref={overlayCanvasRef}
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                style={{ transform: 'scaleX(-1)', display: isWebcamActive ? 'block' : 'none' }}
+              />
+              <canvas ref={captureCanvasRef} className="hidden" />
 
               {!isWebcamActive && (
-                <div className="text-center space-y-2 text-slate-500 p-6">
-                  <Camera className="w-10 h-10 mx-auto stroke-[1.5]" />
-                  <p className="text-xs">Camera stream inactive</p>
+                <div className="flex flex-col items-center justify-center h-64 gap-3">
+                  <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-dashed border-slate-700 flex items-center justify-center">
+                    <Camera className="w-9 h-9 text-slate-600" />
+                  </div>
+                  <p className="text-xs text-slate-500">Camera inactive — click Start Camera</p>
                 </div>
               )}
 
+              {/* Status overlay */}
               {isWebcamActive && (
-                <div className="absolute bottom-4 inset-x-4 flex items-center justify-center">
-                  <button
-                    onClick={captureFrameAndRecognize}
-                    disabled={isRecognizing}
-                    className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-full shadow-2xl flex items-center gap-2 transition-all disabled:opacity-50"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    <span>{isRecognizing ? 'Recognizing...' : 'Scan & Verify Attendance'}</span>
-                  </button>
+                <div className="absolute bottom-0 inset-x-0 p-2.5 bg-gradient-to-t from-slate-950/90 to-transparent">
+                  <p className={`text-center text-[11px] font-medium ${
+                    inCooldown ? 'text-indigo-400' :
+                    isScanning ? 'text-amber-400 animate-pulse' :
+                    faceDetected ? 'text-emerald-400' : 'text-slate-400'
+                  }`}>
+                    {inCooldown ? `Next scan in ${(COOLDOWN_MS / 1000).toFixed(1)}s…` :
+                     isScanning ? 'Identifying face…' :
+                     faceDetected ? 'Face locked — identifying…' :
+                     'Waiting for face…'}
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* File Upload Option */}
-            <div className="border-2 border-dashed border-slate-800 rounded-2xl p-6 text-center space-y-3 bg-slate-950/40 relative">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileUploadRecognize}
-                disabled={isRecognizing}
-                className="absolute inset-0 opacity-0 cursor-pointer"
-              />
-              <Sparkles className="w-8 h-8 text-indigo-400 mx-auto" />
-              <p className="text-xs text-slate-200 font-semibold">Upload Photo Snapshot for AI Verification</p>
-              <p className="text-[10px] text-slate-400">Upload a single photo of a student to mark attendance</p>
+            {/* Status panel — takes 2 cols */}
+            <div className="md:col-span-2 flex flex-col gap-4">
+              {/* How it works */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">How it works</p>
+                <div className="space-y-2">
+                  {[
+                    { icon: '①', label: 'Start Camera once', active: isWebcamActive },
+                    { icon: '②', label: 'Student enters camera view', active: isWebcamActive && faceDetected },
+                    { icon: '③', label: 'Face auto-locks (hold ~1s)', active: isWebcamActive && faceDetected && !inCooldown },
+                    { icon: '④', label: 'Attendance marked automatically', active: !!lastResult?.success },
+                  ].map((step) => (
+                    <div key={step.label} className={`flex items-center gap-2.5 text-[11px] ${step.active ? 'text-emerald-400' : 'text-slate-500'}`}>
+                      <span className="font-mono font-bold">{step.icon}</span>
+                      <span>{step.label}</span>
+                      {step.active && <CheckCircle2 className="w-3 h-3 ml-auto shrink-0" />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Last recognition result */}
+              <div className={`flex-1 rounded-2xl border p-4 flex flex-col justify-center items-center text-center gap-2 transition-all ${
+                lastResult?.success
+                  ? 'bg-emerald-500/5 border-emerald-500/30'
+                  : 'bg-slate-950 border-slate-800'
+              }`}>
+                {lastResult?.success ? (
+                  <>
+                    <ShieldCheck className="w-8 h-8 text-emerald-400" />
+                    <p className="text-emerald-400 font-bold text-sm">{lastResult.name}</p>
+                    {lastResult.reg && <p className="text-emerald-300/70 text-[10px] font-mono">{lastResult.reg}</p>}
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-semibold border border-emerald-500/30">
+                      {lastResult.confidence}% match
+                    </span>
+                  </>
+                ) : isScanning ? (
+                  <>
+                    <ScanFace className="w-8 h-8 text-amber-400 animate-pulse" />
+                    <p className="text-amber-400 text-xs font-medium">Scanning…</p>
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="w-7 h-7 text-slate-600" />
+                    <p className="text-slate-500 text-[11px]">No match yet</p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
