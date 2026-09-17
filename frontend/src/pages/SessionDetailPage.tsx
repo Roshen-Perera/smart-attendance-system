@@ -390,22 +390,55 @@ export const SessionDetailPage: React.FC = () => {
       {/* AI Live Face Recognition Panel */}
       {session?.is_active && (
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-900/30">
                 <Camera className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-100 text-base">AI Live Face Recognition</h3>
-                <p className="text-xs text-slate-400">Capture face via camera or upload snapshot to verify attendance</p>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-slate-100 text-base">AI Live Face Recognition</h3>
+                  {isWebcamActive && isAutoScan && (
+                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold border border-emerald-500/30">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      Auto-Scanning
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400">Continuous biometric scanning or single snapshot verification</p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
+              {isWebcamActive && (
+                <>
+                  <button
+                    onClick={() => setIsAutoScan((prev) => !prev)}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border ${
+                      isAutoScan
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-950/50'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                    }`}
+                    title={isAutoScan ? 'Turn off Auto-Scan' : 'Turn on Continuous Auto-Scan'}
+                  >
+                    <Radio className={`w-3.5 h-3.5 ${isAutoScan ? 'text-emerald-400 animate-pulse' : ''}`} />
+                    <span>{isAutoScan ? 'Auto-Scan: ON' : 'Auto-Scan: OFF'}</span>
+                  </button>
+
+                  <button
+                    onClick={toggleFullscreen}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                    title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Camera Preview'}
+                  >
+                    {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                  </button>
+                </>
+              )}
+
               {!isWebcamActive ? (
                 <button
                   onClick={startWebcam}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2"
                 >
                   <Camera className="w-4 h-4" />
                   <span>Start Camera</span>
@@ -413,7 +446,7 @@ export const SessionDetailPage: React.FC = () => {
               ) : (
                 <button
                   onClick={stopWebcam}
-                  className="px-3.5 py-2 bg-rose-600/20 text-rose-400 border border-rose-500/30 rounded-xl text-xs font-semibold transition-all"
+                  className="px-3.5 py-2 bg-rose-600/20 text-rose-400 hover:bg-rose-600/30 border border-rose-500/30 rounded-xl text-xs font-semibold transition-all"
                 >
                   Stop Camera
                 </button>
@@ -422,38 +455,131 @@ export const SessionDetailPage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-            {/* Webcam Video viewport */}
-            <div className="relative bg-slate-950 border border-slate-800 rounded-2xl h-64 overflow-hidden flex items-center justify-center">
+            {/* Webcam Video Viewport / Fullscreen Container */}
+            <div
+              ref={videoContainerRef}
+              className={`relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex items-center justify-center transition-all ${
+                isFullscreen
+                  ? 'w-screen h-screen rounded-none border-none p-0 bg-black'
+                  : 'h-80 w-full'
+              }`}
+            >
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
+                muted
                 className={`w-full h-full object-cover ${!isWebcamActive && 'hidden'}`}
               />
 
+              {/* Camera Inactive Screen */}
               {!isWebcamActive && (
-                <div className="text-center space-y-2 text-slate-500 p-6">
-                  <Camera className="w-10 h-10 mx-auto stroke-[1.5]" />
-                  <p className="text-xs">Camera stream inactive</p>
+                <div className="text-center space-y-3 text-slate-500 p-6">
+                  <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto text-slate-600">
+                    <Camera className="w-7 h-7" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-400">Camera stream inactive</p>
+                    <p className="text-[11px] text-slate-600">Click &quot;Start Camera&quot; to begin face verification</p>
+                  </div>
                 </div>
               )}
 
+              {/* Active Camera Overlays */}
               {isWebcamActive && (
-                <div className="absolute bottom-4 inset-x-4 flex items-center justify-center">
-                  <button
-                    onClick={captureFrameAndRecognize}
-                    disabled={isRecognizing}
-                    className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-full shadow-2xl flex items-center gap-2 transition-all disabled:opacity-50"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    <span>{isRecognizing ? 'Recognizing...' : 'Scan & Verify Attendance'}</span>
-                  </button>
-                </div>
+                <>
+                  {/* Top HUD overlay */}
+                  <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none">
+                    <div className="flex items-center gap-2 pointer-events-auto">
+                      <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 backdrop-blur-md border border-slate-800/80 text-[11px] text-slate-300 font-medium flex items-center gap-1.5 shadow-lg">
+                        <span className={`w-2 h-2 rounded-full ${isAutoScan ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                        {isAutoScan ? 'Continuous Recognition Mode' : 'Manual Scan Mode'}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={toggleFullscreen}
+                      className="pointer-events-auto p-2 rounded-lg bg-slate-950/80 hover:bg-slate-900 backdrop-blur-md border border-slate-800/80 text-slate-300 shadow-lg transition-colors"
+                      title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                    >
+                      {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  {/* Centered Facial Reticle / Guide Box */}
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div
+                      className={`relative w-48 h-56 rounded-2xl border-2 transition-all duration-300 ${
+                        isRecognizing
+                          ? 'border-emerald-400 shadow-[0_0_25px_rgba(52,211,153,0.5)] scale-105'
+                          : isAutoScan
+                          ? 'border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.2)]'
+                          : 'border-slate-600/40 border-dashed'
+                      }`}
+                    >
+                      {/* Corner marks */}
+                      <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-emerald-400 rounded-tl" />
+                      <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-emerald-400 rounded-tr" />
+                      <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-emerald-400 rounded-bl" />
+                      <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-emerald-400 rounded-br" />
+
+                      {/* Scanning laser effect when recognizing or auto-scanning */}
+                      {(isRecognizing || isAutoScan) && (
+                        <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-pulse top-1/2 -translate-y-1/2" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Last Detected Notification HUD */}
+                  {lastDetectionInfo && (
+                    <div className="absolute top-14 inset-x-4 flex justify-center pointer-events-none">
+                      <div className="px-3.5 py-1.5 rounded-xl bg-emerald-950/90 backdrop-blur-md border border-emerald-500/40 text-emerald-200 text-xs font-semibold flex items-center gap-2 shadow-2xl animate-fade-in">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>
+                          {lastDetectionInfo.name} ({lastDetectionInfo.confidence}%)
+                        </span>
+                        <span className="text-[10px] text-emerald-400/70 font-mono font-normal">
+                          {lastDetectionInfo.time}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bottom Controls Bar */}
+                  <div className="absolute bottom-4 inset-x-4 flex items-center justify-center gap-3">
+                    <button
+                      onClick={handleManualScan}
+                      disabled={isRecognizing}
+                      className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-full shadow-2xl flex items-center gap-2 transition-all disabled:opacity-50 hover:scale-105"
+                    >
+                      {isRecognizing ? (
+                        <>
+                          <Scan className="w-4 h-4 animate-spin" />
+                          <span>Recognizing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          <span>{isAutoScan ? 'Instant Scan Now' : 'Scan & Verify Attendance'}</span>
+                        </>
+                      )}
+                    </button>
+
+                    {isFullscreen && (
+                      <button
+                        onClick={toggleFullscreen}
+                        className="px-4 py-2.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 font-semibold text-xs rounded-full backdrop-blur-md border border-slate-700 shadow-xl transition-all"
+                      >
+                        Exit Fullscreen
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
             </div>
 
             {/* File Upload Option */}
-            <div className="border-2 border-dashed border-slate-800 rounded-2xl p-6 text-center space-y-3 bg-slate-950/40 relative">
+            <div className="border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-2xl p-6 text-center space-y-3 bg-slate-950/40 relative h-80 flex flex-col items-center justify-center transition-colors">
               <input
                 type="file"
                 accept="image/*"
@@ -461,9 +587,16 @@ export const SessionDetailPage: React.FC = () => {
                 disabled={isRecognizing}
                 className="absolute inset-0 opacity-0 cursor-pointer"
               />
-              <Sparkles className="w-8 h-8 text-indigo-400 mx-auto" />
-              <p className="text-xs text-slate-200 font-semibold">Upload Photo Snapshot for AI Verification</p>
-              <p className="text-[10px] text-slate-400">Upload a single photo of a student to mark attendance</p>
+              <div className="w-12 h-12 rounded-2xl bg-indigo-950/60 border border-indigo-800/50 flex items-center justify-center text-indigo-400">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs text-slate-200 font-semibold">Upload Photo Snapshot for AI Verification</p>
+                <p className="text-[11px] text-slate-400">Upload a single photo of a student to mark attendance</p>
+              </div>
+              <span className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-medium text-slate-300">
+                Browse Image File
+              </span>
             </div>
           </div>
         </div>
