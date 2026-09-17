@@ -11,7 +11,6 @@ import {
   RefreshCw,
   Sparkles,
   Check,
-  X,
 } from 'lucide-react';
 import { facesApi } from '../api/endpoints';
 import type { FaceImage, FaceEmbedding } from '../types';

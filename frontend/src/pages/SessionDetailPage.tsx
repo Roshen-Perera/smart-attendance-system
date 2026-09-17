@@ -45,7 +45,7 @@ export const SessionDetailPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const videoContainerRef = useRef<HTMLDivElement | null>(null);
-  const autoScanIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const autoScanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isScanningInProgressRef = useRef(false);
   const recentDetectionsRef = useRef<Map<string, number>>(new Map());
 
