@@ -599,24 +599,22 @@ export const SessionDetailPage: React.FC = () => {
               </div>
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-bold text-slate-100 text-base">AI Live Face Recognition</h3>
+                  <h3 className="font-bold text-slate-100 text-base">AI Live Multi-Face Attendance</h3>
                   {isWebcamActive && (
-                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-semibold border border-slate-700">
+                    <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 text-[10px] font-semibold border border-cyan-800/60 shadow-sm">
                       <Users className="w-3 h-3" />
-                      {detectedFaceCount} {detectedFaceCount === 1 ? 'face' : 'faces'} detected
+                      {detectedFaceCount} {detectedFaceCount === 1 ? 'face' : 'faces'} tracked
                     </span>
                   )}
                   {isWebcamActive && isAutoScan && (
-                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold border border-emerald-500/30">
+                    <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-semibold border border-emerald-500/30">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                      Auto-Scanning
+                      Auto-Marking Active
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-slate-400">
-                  {isFaceDetectorSupported
-                    ? 'Multi-face live tracking — tracks all faces simultaneously'
-                    : 'Live face recognition — tracks the whole frame (upgrade browser for multi-face)'}
+                  Real-time multi-face tracking & automatic attendance detection for all visible students
                 </p>
               </div>
             </div>
@@ -633,7 +631,7 @@ export const SessionDetailPage: React.FC = () => {
                     }`}
                   >
                     <Radio className={`w-3.5 h-3.5 ${isAutoScan ? 'text-emerald-400 animate-pulse' : ''}`} />
-                    <span>{isAutoScan ? 'Auto-Scan: ON' : 'Auto-Scan: OFF'}</span>
+                    <span>{isAutoScan ? 'Auto-Attendance: ON' : 'Auto-Attendance: OFF'}</span>
                   </button>
                   <button
                     onClick={toggleFullscreen}
@@ -651,7 +649,7 @@ export const SessionDetailPage: React.FC = () => {
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2"
                 >
                   <Camera className="w-4 h-4" />
-                  <span>Start Camera</span>
+                  <span>Start Live Attendance</span>
                 </button>
               ) : (
                 <button
@@ -697,14 +695,14 @@ export const SessionDetailPage: React.FC = () => {
                     <Camera className="w-8 h-8" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-slate-400">Camera stream inactive</p>
-                    <p className="text-xs text-slate-600 mt-1">Start camera to begin live multi-face tracking</p>
+                    <p className="text-sm font-semibold text-slate-400">Live Camera Stream Inactive</p>
+                    <p className="text-xs text-slate-600 mt-1">Start camera to automatically detect and mark students</p>
                   </div>
                   <button
                     onClick={startWebcam}
                     className="mt-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg"
                   >
-                    Start Camera
+                    Start Live Attendance
                   </button>
                 </div>
               )}
@@ -714,14 +712,15 @@ export const SessionDetailPage: React.FC = () => {
                 <>
                   {/* Top status bar */}
                   <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none">
-                    <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 backdrop-blur-md border border-slate-800/80 text-[11px] text-slate-300 font-medium flex items-center gap-1.5 shadow-lg">
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-950/85 backdrop-blur-md border border-slate-800/80 text-[11px] text-slate-300 font-medium flex items-center gap-1.5 shadow-lg">
                       <span className={`w-2 h-2 rounded-full ${isAutoScan ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                      {isAutoScan ? `Auto-Scanning ${detectedFaceCount > 0 ? `• ${detectedFaceCount} faces` : ''}` : 'Manual Mode'}
+                      {isAutoScan ? `Auto-Marking Active ${detectedFaceCount > 0 ? `• ${detectedFaceCount} faces tracked` : ''}` : 'Manual Trigger Mode'}
                     </span>
                     <div className="flex items-center gap-2 pointer-events-auto">
-                      {isAutoScan && scanStats.marked > 0 && (
-                        <span className="px-2.5 py-1 rounded-lg bg-emerald-950/90 backdrop-blur-md border border-emerald-500/40 text-[11px] text-emerald-300 font-medium shadow-lg">
-                          {scanStats.marked} marked this session
+                      {scanStats.newlyMarked > 0 && (
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-950/90 backdrop-blur-md border border-emerald-500/40 text-[11px] text-emerald-300 font-medium shadow-lg flex items-center gap-1">
+                          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                          {scanStats.newlyMarked} marked in this session
                         </span>
                       )}
                       <button
@@ -734,10 +733,11 @@ export const SessionDetailPage: React.FC = () => {
                   </div>
 
                   {/* No faces hint */}
-                  {isFaceDetectorSupported && detectedFaceCount === 0 && (
+                  {detectedFaceCount === 0 && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="px-4 py-2 rounded-xl bg-slate-950/70 backdrop-blur-sm border border-slate-700/50 text-slate-400 text-xs font-medium">
-                        No faces detected — point camera at students
+                      <div className="px-4 py-2 rounded-xl bg-slate-950/75 backdrop-blur-sm border border-slate-700/50 text-slate-400 text-xs font-medium flex items-center gap-2">
+                        <Scan className="w-4 h-4 text-cyan-400 animate-pulse" />
+                        <span>Point camera at students — auto-detecting faces</span>
                       </div>
                     </div>
                   )}
@@ -747,13 +747,17 @@ export const SessionDetailPage: React.FC = () => {
                     <button
                       onClick={handleManualScan}
                       disabled={isScanningRef.current}
-                      className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-full shadow-2xl flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
+                      className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-75 text-slate-950 font-bold text-xs rounded-full shadow-2xl flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
                     >
-                      <Sparkles className="w-4 h-4" />
+                      {isRecognizing ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="w-4 h-4" />
+                      )}
                       <span>
-                        {isFaceDetectorSupported && detectedFaceCount > 1
-                          ? `Scan All ${detectedFaceCount} Faces`
-                          : 'Scan & Verify Attendance'}
+                        {detectedFaceCount > 1
+                          ? `Scan All ${detectedFaceCount} Faces Now`
+                          : 'Scan & Mark Attendance'}
                       </span>
                     </button>
 
@@ -775,27 +779,33 @@ export const SessionDetailPage: React.FC = () => {
               {/* Recent Verifications feed */}
               {isWebcamActive && (
                 <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex-1 space-y-3 min-h-36">
-                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Live Verification Feed</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Live Verification Feed</p>
+                    <span className="text-[10px] text-emerald-400 font-mono">Real-time</span>
+                  </div>
                   {recentVerifications.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-6 text-slate-600 space-y-1">
                       <Camera className="w-6 h-6" />
-                      <p className="text-xs">Verified students will appear here</p>
+                      <p className="text-xs">Recognized students will appear here</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
                       {recentVerifications.map((v, i) => (
                         <div
                           key={i}
-                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 gap-2"
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-emerald-900/30 gap-2 shadow-sm"
                         >
                           <div className="flex items-center gap-2 min-w-0">
                             <div className="w-6 h-6 rounded-lg bg-emerald-950 flex items-center justify-center flex-shrink-0">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                             </div>
-                            <p className="text-xs font-semibold text-slate-200 truncate">{v.name}</p>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-slate-200 truncate">{v.name}</p>
+                              <p className="text-[10px] text-slate-500 font-mono">{v.reg}</p>
+                            </div>
                           </div>
                           <div className="text-right flex-shrink-0">
-                            <p className="text-[10px] text-emerald-400 font-semibold">{v.confidence}%</p>
+                            <p className="text-[10px] text-emerald-400 font-semibold">{v.confidence}% match</p>
                             <p className="text-[10px] text-slate-500 font-mono">{v.time}</p>
                           </div>
                         </div>
