@@ -22,6 +22,7 @@ import type {
   FaceEmbedding,
   EligibilityResult,
   RecognitionResult,
+  MultiFaceRecognitionResult,
 } from '../types';
 
 // Auth

@@ -600,6 +600,12 @@ export const SessionDetailPage: React.FC = () => {
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-bold text-slate-100 text-base">AI Live Multi-Face Attendance</h3>
+                  {!isDetectorReady && (
+                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-medium border border-slate-700">
+                      <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                      Loading Tracker...
+                    </span>
+                  )}
                   {isWebcamActive && (
                     <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 text-[10px] font-semibold border border-cyan-800/60 shadow-sm">
                       <Users className="w-3 h-3" />
