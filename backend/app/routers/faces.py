@@ -1,6 +1,6 @@
 import os
 import uuid
-import face_recognition
+from typing import List
 
 from fastapi import (
     APIRouter,
@@ -9,7 +9,6 @@ from fastapi import (
     Depends,
     HTTPException
 )
-
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -17,6 +16,7 @@ from app import models
 from app.schemas import face as face_schema
 from app.dependencies import require_lecturer
 from app.logger import logger
+from app.face_service import face_service
 
 
 router = APIRouter(
@@ -85,11 +85,9 @@ async def upload_face(
     with open(file_path, "wb") as buffer:
         buffer.write(contents)
 
-    # 5. Validate that a face is detected in the image
+    # 5. Validate that a face is detected in the image using InsightFace
     try:
-        loaded_image = face_recognition.load_image_file(file_path)
-        detected_encodings = face_recognition.face_encodings(loaded_image)
-        if not detected_encodings:
+        if not face_service.has_face(file_path):
             os.remove(file_path)
             raise HTTPException(
                 status_code=400,
@@ -125,12 +123,11 @@ async def upload_face(
     }
 
 
-@router.get("/{reg_number:path}", response_model=list[face_schema.FaceImageOut])
+@router.get("/{reg_number:path}", response_model=List[face_schema.FaceImageOut])
 def get_face_images(
     reg_number: str,
     db: Session = Depends(get_db)
 ):
-
     student = (
         db.query(models.Student)
         .filter(
