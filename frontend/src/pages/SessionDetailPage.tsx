@@ -14,7 +14,11 @@ import {
   Minimize2,
   Radio,
   Users,
+  Scan,
+  Loader2,
+  ShieldCheck,
 } from 'lucide-react';
+import { FilesetResolver, FaceDetector as MPFaceDetector } from '@mediapipe/tasks-vision';
 import {
   sessionsApi,
   classesApi,
@@ -22,25 +26,20 @@ import {
   recognitionApi,
   reportsApi,
 } from '../api/endpoints';
-import type { Session, ClassCourse, Student, AttendanceRecord } from '../types';
+import type { Session, ClassCourse, Student, AttendanceRecord, MultiFaceInfo } from '../types';
 import { Modal } from '../components/ui/Modal';
 import toast from 'react-hot-toast';
 
-// Extend Window to include FaceDetector
-declare global {
-  interface Window {
-    FaceDetector: new (options?: { maxDetectedFaces?: number; fastMode?: boolean }) => {
-      detect(image: HTMLVideoElement | HTMLImageElement | ImageBitmap): Promise<Array<{
-        boundingBox: DOMRectReadOnly;
-        landmarks?: Array<{ type: string; locations: Array<{ x: number; y: number }> }>;
-      }>>;
-    };
-  }
-}
-
-interface DetectedFace {
-  box: DOMRectReadOnly;
+interface TrackedFace {
   id: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  studentName?: string;
+  regNumber?: string;
+  confidence?: number;
+  isVerified?: boolean;
 }
 
 export const SessionDetailPage: React.FC = () => {
@@ -52,14 +51,15 @@ export const SessionDetailPage: React.FC = () => {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // AI Recognition state
+  // AI Recognition & Camera state
   const [isWebcamActive, setIsWebcamActive] = useState(false);
-  const [isAutoScan, setIsAutoScan] = useState(false);
+  const [isAutoScan, setIsAutoScan] = useState(true); // Default to ON for automatic attendance
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [detectedFaceCount, setDetectedFaceCount] = useState(0);
-  const [isFaceDetectorSupported, setIsFaceDetectorSupported] = useState(false);
-  const [scanStats, setScanStats] = useState<{ total: number; marked: number }>({ total: 0, marked: 0 });
-  const [recentVerifications, setRecentVerifications] = useState<Array<{ name: string; time: string; confidence: number }>>([]);
+  const [isDetectorReady, setIsDetectorReady] = useState(false);
+  const [isRecognizing, setIsRecognizing] = useState(false);
+  const [scanStats, setScanStats] = useState<{ totalScans: number; newlyMarked: number }>({ totalScans: 0, newlyMarked: 0 });
+  const [recentVerifications, setRecentVerifications] = useState<Array<{ name: string; reg: string; time: string; confidence: number }>>([]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -68,9 +68,10 @@ export const SessionDetailPage: React.FC = () => {
   const animFrameRef = useRef<number | null>(null);
   const autoScanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isScanningRef = useRef(false);
-  const recentDetectionsRef = useRef<Map<string, number>>(new Map());
-  const faceDetectorRef = useRef<InstanceType<Window['FaceDetector']> | null>(null);
-  const lastDetectedFacesRef = useRef<DetectedFace[]>([]);
+  const recentDetectionsRef = useRef<Map<string, number>>(new Map()); // student reg -> last marked timestamp
+  const faceDetectorRef = useRef<MPFaceDetector | null>(null);
+  const trackedFacesRef = useRef<TrackedFace[]>([]);
+  const recognizedFacesMapRef = useRef<Map<number, { name: string; reg: string; conf: number }>>(new Map());
 
   // Manual & Correction modal state
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -109,19 +110,36 @@ export const SessionDetailPage: React.FC = () => {
     loadSessionData();
   }, [sessionId]);
 
-  // Check FaceDetector API support
+  // ─── Initialize MediaPipe FaceDetector ──────────────────────────────────────
   useEffect(() => {
-    setIsFaceDetectorSupported('FaceDetector' in window);
-    if ('FaceDetector' in window) {
+    let isMounted = true;
+    const initDetector = async () => {
       try {
-        faceDetectorRef.current = new window.FaceDetector({ maxDetectedFaces: 50, fastMode: true });
-      } catch (_) {
-        setIsFaceDetectorSupported(false);
+        const vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+        );
+        if (!isMounted) return;
+        const detector = await MPFaceDetector.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          minDetectionConfidence: 0.45,
+        });
+        if (!isMounted) return;
+        faceDetectorRef.current = detector;
+        setIsDetectorReady(true);
+      } catch (e) {
+        console.warn('MediaPipe initialization fallback to backend-driven tracking:', e);
+        setIsDetectorReady(true);
       }
-    }
+    };
+    initDetector();
+    return () => { isMounted = false; };
   }, []);
 
-  // Handle native fullscreen changes
+  // Handle fullscreen changes
   useEffect(() => {
     const handleFSChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFSChange);
@@ -140,17 +158,17 @@ export const SessionDetailPage: React.FC = () => {
     };
   }, []);
 
-  // ─── Canvas face tracking render loop ───────────────────────────────────────
+  // ─── Real-time Canvas Face Tracking Overlay (60 FPS Render Loop) ─────────────
   const renderTrackingOverlay = useCallback(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!canvas || !video || !video.videoWidth) {
+    if (!canvas || !video || !video.videoWidth || video.readyState < 2) {
       animFrameRef.current = requestAnimationFrame(renderTrackingOverlay);
       return;
     }
 
-    // Keep canvas in sync with displayed video size
-    const { clientWidth: dispW, clientHeight: dispH } = video;
+    const dispW = video.clientWidth;
+    const dispH = video.clientHeight;
     if (canvas.width !== dispW || canvas.height !== dispH) {
       canvas.width = dispW;
       canvas.height = dispH;
@@ -162,82 +180,128 @@ export const SessionDetailPage: React.FC = () => {
       return;
     }
 
+    // Run MediaPipe detection if detector is ready
+    if (faceDetectorRef.current && video.currentTime > 0) {
+      try {
+        const detections = faceDetectorRef.current.detectForVideo(video, performance.now());
+        if (detections && detections.detections) {
+          const scaleX = dispW / video.videoWidth;
+          const scaleY = dispH / video.videoHeight;
+
+          const newTracked: TrackedFace[] = detections.detections.map((det, index) => {
+            const bb = det.boundingBox;
+            if (!bb) return { id: index + 1, x: 0, y: 0, w: 0, h: 0 };
+            const faceX = bb.originX * scaleX;
+            const faceY = bb.originY * scaleY;
+            const faceW = bb.width * scaleX;
+            const faceH = bb.height * scaleY;
+
+            const recInfo = recognizedFacesMapRef.current.get(index);
+
+            return {
+              id: index + 1,
+              x: faceX,
+              y: faceY,
+              w: faceW,
+              h: faceH,
+              studentName: recInfo?.name,
+              regNumber: recInfo?.reg,
+              confidence: recInfo?.conf,
+              isVerified: !!recInfo,
+            };
+          });
+
+          trackedFacesRef.current = newTracked;
+          setDetectedFaceCount(newTracked.length);
+        }
+      } catch (_) {
+        // detection frame pass
+      }
+    }
+
+    // Clear previous drawings
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Scale factors from native video res → displayed size
-    const scaleX = dispW / video.videoWidth;
-    const scaleY = dispH / video.videoHeight;
+    // Draw high-tech dynamic bounding box for EACH tracked face
+    const faces = trackedFacesRef.current;
+    faces.forEach((face) => {
+      const { x, y, w, h, isVerified, studentName, regNumber, confidence, id } = face;
+      if (w <= 0 || h <= 0) return;
 
-    // Draw bounding boxes for each tracked face
-    lastDetectedFacesRef.current.forEach((face, i) => {
-      const x = face.box.x * scaleX;
-      const y = face.box.y * scaleY;
-      const w = face.box.width * scaleX;
-      const h = face.box.height * scaleY;
+      const primaryColor = isVerified ? '#10b981' : '#06b6d4'; // emerald if verified, electric cyan if tracking
+      const glowColor = isVerified ? 'rgba(16, 185, 129, 0.4)' : 'rgba(6, 182, 212, 0.3)';
 
-      const color = isAutoScan ? '#34d399' : '#818cf8'; // emerald in auto, indigo in manual
-
-      // Draw main rectangle
-      ctx.strokeStyle = color;
+      // 1. Subtle glowing bounding box
+      ctx.strokeStyle = primaryColor;
       ctx.lineWidth = 2;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 8;
-      ctx.beginPath();
-      ctx.roundRect(x, y, w, h, 6);
-      ctx.stroke();
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 10;
+      ctx.strokeRect(x, y, w, h);
       ctx.shadowBlur = 0;
 
-      // Corner accent marks
-      const cs = 12; // corner size
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#fff';
-      // TL
-      ctx.beginPath(); ctx.moveTo(x, y + cs); ctx.lineTo(x, y); ctx.lineTo(x + cs, y); ctx.stroke();
-      // TR
-      ctx.beginPath(); ctx.moveTo(x + w - cs, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + cs); ctx.stroke();
-      // BL
-      ctx.beginPath(); ctx.moveTo(x, y + h - cs); ctx.lineTo(x, y + h); ctx.lineTo(x + cs, y + h); ctx.stroke();
-      // BR
-      ctx.beginPath(); ctx.moveTo(x + w - cs, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - cs); ctx.stroke();
+      // 2. Futuristic Corner Brackets (surveillance style)
+      const cornerLen = Math.min(20, w * 0.25, h * 0.25);
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = isVerified ? '#34d399' : '#38bdf8';
 
-      // Face index badge
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y - 20, 34, 18);
-      ctx.fillStyle = '#000';
-      ctx.font = 'bold 10px monospace';
-      ctx.fillText(`#${i + 1}`, x + 5, y - 6);
+      // Top-Left
+      ctx.beginPath();
+      ctx.moveTo(x, y + cornerLen);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + cornerLen, y);
+      ctx.stroke();
+
+      // Top-Right
+      ctx.beginPath();
+      ctx.moveTo(x + w - cornerLen, y);
+      ctx.lineTo(x + w, y);
+      ctx.lineTo(x + w, y + cornerLen);
+      ctx.stroke();
+
+      // Bottom-Left
+      ctx.beginPath();
+      ctx.moveTo(x, y + h - cornerLen);
+      ctx.lineTo(x, y + h);
+      ctx.lineTo(x + cornerLen, y + h);
+      ctx.stroke();
+
+      // Bottom-Right
+      ctx.beginPath();
+      ctx.moveTo(x + w - cornerLen, y + h);
+      ctx.lineTo(x + w, y + h);
+      ctx.lineTo(x + w, y + h - cornerLen);
+      ctx.stroke();
+
+      // 3. Floating HUD Badge above face box
+      const badgeText = isVerified
+        ? `✓ ${studentName || 'Verified'} (${regNumber || ''}) • ${confidence || 95}%`
+        : `● Face #${id} · Tracking`;
+
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+      const textMetrics = ctx.measureText(badgeText);
+      const badgeW = textMetrics.width + 16;
+      const badgeH = 22;
+      const badgeX = Math.max(4, Math.min(x, canvas.width - badgeW - 4));
+      const badgeY = Math.max(badgeH + 4, y - 6);
+
+      // Badge background
+      ctx.fillStyle = isVerified ? 'rgba(6, 78, 59, 0.92)' : 'rgba(15, 23, 42, 0.88)';
+      ctx.strokeStyle = isVerified ? '#059669' : '#0284c7';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(badgeX, badgeY - badgeH, badgeW, badgeH, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      // Badge text
+      ctx.fillStyle = isVerified ? '#a7f3d0' : '#e0f2fe';
+      ctx.fillText(badgeText, badgeX + 8, badgeY - 7);
     });
 
     animFrameRef.current = requestAnimationFrame(renderTrackingOverlay);
-  }, [isAutoScan]);
+  }, []);
 
-  // ─── Face detection loop (runs every ~300ms to update face positions) ────────
-  useEffect(() => {
-    if (!isWebcamActive || !isFaceDetectorSupported || !faceDetectorRef.current) return;
-
-    let cancelled = false;
-    let faceIdx = 0;
-
-    const detectLoop = async () => {
-      if (cancelled || !videoRef.current || !videoRef.current.videoWidth) {
-        if (!cancelled) setTimeout(detectLoop, 300);
-        return;
-      }
-      try {
-        const faces = await faceDetectorRef.current!.detect(videoRef.current);
-        if (!cancelled) {
-          lastDetectedFacesRef.current = faces.map((f) => ({ box: f.boundingBox, id: faceIdx++ }));
-          setDetectedFaceCount(faces.length);
-        }
-      } catch (_) { /* ignore during teardown */ }
-      if (!cancelled) setTimeout(detectLoop, 300);
-    };
-
-    detectLoop();
-    return () => { cancelled = true; };
-  }, [isWebcamActive, isFaceDetectorSupported]);
-
-  // ─── Canvas render loop start/stop ──────────────────────────────────────────
+  // Start / stop render loop
   useEffect(() => {
     if (isWebcamActive) {
       animFrameRef.current = requestAnimationFrame(renderTrackingOverlay);
@@ -246,7 +310,6 @@ export const SessionDetailPage: React.FC = () => {
         cancelAnimationFrame(animFrameRef.current);
         animFrameRef.current = null;
       }
-      // Clear canvas
       const canvas = canvasRef.current;
       if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
     }
@@ -255,30 +318,46 @@ export const SessionDetailPage: React.FC = () => {
     };
   }, [isWebcamActive, renderTrackingOverlay]);
 
-  // ─── Webcam control ──────────────────────────────────────────────────────────
+  // ─── Webcam Start / Stop ───────────────────────────────────────────────────
   const startWebcam = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
       });
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play().catch(() => {});
+      }
       setIsWebcamActive(true);
-      setScanStats({ total: 0, marked: 0 });
+      setIsAutoScan(true); // Automatically enable auto attendance
+      setScanStats({ totalScans: 0, newlyMarked: 0 });
+      recognizedFacesMapRef.current.clear();
+      trackedFacesRef.current = [];
     } catch {
       toast.error('Camera access denied or webcam unavailable');
     }
   };
 
   const stopWebcam = () => {
-    if (autoScanIntervalRef.current) { clearInterval(autoScanIntervalRef.current); autoScanIntervalRef.current = null; }
-    setIsAutoScan(false);
-    if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
-    if (videoRef.current) videoRef.current.srcObject = null;
+    if (autoScanIntervalRef.current) {
+      clearInterval(autoScanIntervalRef.current);
+      autoScanIntervalRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setIsWebcamActive(false);
     setDetectedFaceCount(0);
-    lastDetectedFacesRef.current = [];
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    trackedFacesRef.current = [];
+    recognizedFacesMapRef.current.clear();
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
   };
 
   const toggleFullscreen = () => {
@@ -290,124 +369,125 @@ export const SessionDetailPage: React.FC = () => {
     }
   };
 
-  // ─── Crop a face region from the live video feed ─────────────────────────────
-  const cropFaceBlob = (faceBox: DOMRectReadOnly): Promise<Blob | null> => {
+  // ─── Capture Full Frame Blob ───────────────────────────────────────────────
+  const captureCurrentFrameBlob = (): Promise<Blob | null> => {
     return new Promise((resolve) => {
       const video = videoRef.current;
-      if (!video) return resolve(null);
-
-      // Add 15% padding around face for better recognition
-      const pad = 0.15;
-      const pw = faceBox.width * pad;
-      const ph = faceBox.height * pad;
-      const sx = Math.max(0, faceBox.x - pw);
-      const sy = Math.max(0, faceBox.y - ph);
-      const sw = Math.min(video.videoWidth - sx, faceBox.width + pw * 2);
-      const sh = Math.min(video.videoHeight - sy, faceBox.height + ph * 2);
-
+      if (!video || !video.videoWidth || video.readyState < 2) return resolve(null);
       const canvas = document.createElement('canvas');
-      canvas.width = sw;
-      canvas.height = sh;
-      canvas.getContext('2d')?.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(null);
+      ctx.drawImage(video, 0, 0);
       canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92);
     });
   };
 
-  // ─── Crop full frame (fallback when FaceDetector not available) ──────────────
-  const captureFullFrameBlob = (): Promise<Blob | null> => {
-    return new Promise((resolve) => {
-      const video = videoRef.current;
-      if (!video || !video.videoWidth) return resolve(null);
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      canvas.getContext('2d')?.drawImage(video, 0, 0);
-      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9);
-    });
-  };
+  // ─── Multi-Face Backend Recognition Handler ─────────────────────────────────
+  const processMultiFaceRecognition = useCallback(async (isAuto = true) => {
+    if (!sessionId || !isWebcamActive || isScanningRef.current) return;
 
-  // ─── Send one blob to backend and handle result ───────────────────────────────
-  const recognizeFaceBlob = useCallback(async (blob: Blob, isAuto: boolean) => {
-    if (!sessionId) return;
+    isScanningRef.current = true;
+    if (!isAuto) setIsRecognizing(true);
+
     try {
-      const res = await recognitionApi.recognize(sessionId, blob);
-      if (res.attendance_id && res.student_reg_number) {
-        const now = Date.now();
-        const lastSeen = recentDetectionsRef.current.get(res.student_reg_number) || 0;
-        const conf = Math.round((res.confidence_score || 0) * 100);
+      const blob = await captureCurrentFrameBlob();
+      if (!blob) return;
 
-        if (now - lastSeen > 8000) {
-          recentDetectionsRef.current.set(res.student_reg_number, now);
-          toast.success(`✅ ${res.student_name} (${res.student_reg_number}) • ${conf}% match`, { duration: 3000 });
-          setRecentVerifications((prev) => [
-            { name: (res.student_name || res.student_reg_number || 'Unknown'), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), confidence: conf },
-            ...prev.slice(0, 4),
-          ]);
-          setScanStats((s) => ({ ...s, marked: s.marked + 1 }));
+      const res = await recognitionApi.recognizeMulti(sessionId, blob);
+      setScanStats((s) => ({ ...s, totalScans: s.totalScans + 1 }));
+
+      if (res && res.faces && res.faces.length > 0) {
+        let newMarkedInBatch = 0;
+        const now = Date.now();
+
+        res.faces.forEach((faceInfo: MultiFaceInfo, idx: number) => {
+          if (faceInfo.student_name && faceInfo.student_reg_number) {
+            const conf = Math.round((faceInfo.confidence_score || 0) * 100);
+            const reg = faceInfo.student_reg_number;
+
+            // Map face index to student info for overlay tags
+            recognizedFacesMapRef.current.set(idx, {
+              name: faceInfo.student_name,
+              reg: reg,
+              conf: conf,
+            });
+
+            // Check if newly marked or already marked
+            if (faceInfo.status === 'newly_marked') {
+              newMarkedInBatch += 1;
+              const lastSeen = recentDetectionsRef.current.get(reg) || 0;
+              if (now - lastSeen > 8000) {
+                recentDetectionsRef.current.set(reg, now);
+                toast.success(`✅ Attendance Marked: ${faceInfo.student_name} (${reg}) • ${conf}% match`, {
+                  duration: 3500,
+                  icon: '🎓',
+                });
+                setRecentVerifications((prev) => [
+                  {
+                    name: faceInfo.student_name!,
+                    reg: reg,
+                    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    confidence: conf,
+                  },
+                  ...prev.slice(0, 5),
+                ]);
+              }
+            } else if (faceInfo.status === 'already_marked') {
+              const lastSeen = recentDetectionsRef.current.get(reg) || 0;
+              if (now - lastSeen > 12000 && !isAuto) {
+                recentDetectionsRef.current.set(reg, now);
+                toast(`ℹ️ ${faceInfo.student_name} already marked present`, { icon: '✓' });
+              }
+            }
+          }
+        });
+
+        if (newMarkedInBatch > 0) {
+          setScanStats((s) => ({ ...s, newlyMarked: s.newlyMarked + newMarkedInBatch }));
           loadSessionData(true);
         }
       } else if (!isAuto) {
-        toast.error(res.message || 'Face not recognized');
+        toast.error('No faces recognized in the frame');
       }
     } catch (err: any) {
       if (!isAuto) toast.error(err.response?.data?.detail || 'Recognition failed');
-    }
-  }, [sessionId, loadSessionData]);
-
-  // ─── Scan all visible faces at once (called by both manual & auto) ────────────
-  const scanAllFaces = useCallback(async (isAuto: boolean) => {
-    if (!videoRef.current || !sessionId || isScanningRef.current) return;
-    if (!videoRef.current.videoWidth) return;
-
-    isScanningRef.current = true;
-    try {
-      const faces = lastDetectedFacesRef.current;
-
-      if (faces.length > 0 && isFaceDetectorSupported) {
-        // Crop and recognize all detected faces in parallel
-        setScanStats((s) => ({ ...s, total: s.total + faces.length }));
-        const blobs = await Promise.all(faces.map((f) => cropFaceBlob(f.box)));
-        const validBlobs = blobs.filter((b): b is Blob => !!b);
-        if (validBlobs.length > 0) {
-          await Promise.all(validBlobs.map((b) => recognizeFaceBlob(b, isAuto)));
-        }
-      } else {
-        // Fallback: full frame
-        const blob = await captureFullFrameBlob();
-        if (blob) {
-          setScanStats((s) => ({ ...s, total: s.total + 1 }));
-          await recognizeFaceBlob(blob, isAuto);
-        }
-      }
     } finally {
       isScanningRef.current = false;
+      if (!isAuto) setIsRecognizing(false);
     }
-  }, [sessionId, isFaceDetectorSupported, recognizeFaceBlob]);
+  }, [sessionId, isWebcamActive, loadSessionData]);
 
-  // ─── Auto-scan interval ───────────────────────────────────────────────────────
+  // ─── Automatic Attendance Scan Interval (Every 1.8s) ────────────────────────
   useEffect(() => {
     if (isAutoScan && isWebcamActive) {
       autoScanIntervalRef.current = setInterval(() => {
-        scanAllFaces(true);
-      }, 2000); // every 2s — scan all faces
+        processMultiFaceRecognition(true);
+      }, 1800);
     } else {
-      if (autoScanIntervalRef.current) { clearInterval(autoScanIntervalRef.current); autoScanIntervalRef.current = null; }
+      if (autoScanIntervalRef.current) {
+        clearInterval(autoScanIntervalRef.current);
+        autoScanIntervalRef.current = null;
+      }
     }
-    return () => { if (autoScanIntervalRef.current) clearInterval(autoScanIntervalRef.current); };
-  }, [isAutoScan, isWebcamActive, scanAllFaces]);
+    return () => {
+      if (autoScanIntervalRef.current) clearInterval(autoScanIntervalRef.current);
+    };
+  }, [isAutoScan, isWebcamActive, processMultiFaceRecognition]);
 
-  const handleManualScan = () => scanAllFaces(false);
+  const handleManualScan = () => processMultiFaceRecognition(false);
 
   const handleFileUploadRecognize = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files[0] || !sessionId) return;
     const file = e.target.files[0];
     try {
-      const res = await recognitionApi.recognize(sessionId, file);
-      if (res.attendance_id) {
-        toast.success(`Recognized: ${res.student_name} (${res.student_reg_number}) - ${Math.round((res.confidence_score || 0) * 100)}% match!`);
+      const res = await recognitionApi.recognizeMulti(sessionId, file);
+      if (res && res.recognized_count > 0) {
+        toast.success(`Recognized & processed ${res.recognized_count} student face(s)!`);
         loadSessionData(true);
       } else {
-        toast.error(res.message || 'Face not recognized');
+        toast.error(res.message || 'No matching student faces recognized');
       }
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Recognition failed');
