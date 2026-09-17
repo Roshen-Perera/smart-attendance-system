@@ -13,7 +13,7 @@ import {
   Maximize2,
   Minimize2,
   Radio,
-  Scan,
+  Users,
 } from 'lucide-react';
 import {
   sessionsApi,
@@ -26,6 +26,23 @@ import type { Session, ClassCourse, Student, AttendanceRecord } from '../types';
 import { Modal } from '../components/ui/Modal';
 import toast from 'react-hot-toast';
 
+// Extend Window to include FaceDetector
+declare global {
+  interface Window {
+    FaceDetector: new (options?: { maxDetectedFaces?: number; fastMode?: boolean }) => {
+      detect(image: HTMLVideoElement | HTMLImageElement | ImageBitmap): Promise<Array<{
+        boundingBox: DOMRectReadOnly;
+        landmarks?: Array<{ type: string; locations: Array<{ x: number; y: number }> }>;
+      }>>;
+    };
+  }
+}
+
+interface DetectedFace {
+  box: DOMRectReadOnly;
+  id: number;
+}
+
 export const SessionDetailPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();
 
@@ -37,17 +54,23 @@ export const SessionDetailPage: React.FC = () => {
 
   // AI Recognition state
   const [isWebcamActive, setIsWebcamActive] = useState(false);
-  const [isRecognizing, setIsRecognizing] = useState(false);
   const [isAutoScan, setIsAutoScan] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [lastDetectionInfo, setLastDetectionInfo] = useState<{ name: string; time: string; confidence: number } | null>(null);
+  const [detectedFaceCount, setDetectedFaceCount] = useState(0);
+  const [isFaceDetectorSupported, setIsFaceDetectorSupported] = useState(false);
+  const [scanStats, setScanStats] = useState<{ total: number; marked: number }>({ total: 0, marked: 0 });
+  const [recentVerifications, setRecentVerifications] = useState<Array<{ name: string; time: string; confidence: number }>>([]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const videoContainerRef = useRef<HTMLDivElement | null>(null);
+  const animFrameRef = useRef<number | null>(null);
   const autoScanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isScanningInProgressRef = useRef(false);
+  const isScanningRef = useRef(false);
   const recentDetectionsRef = useRef<Map<string, number>>(new Map());
+  const faceDetectorRef = useRef<InstanceType<Window['FaceDetector']> | null>(null);
+  const lastDetectedFacesRef = useRef<DetectedFace[]>([]);
 
   // Manual & Correction modal state
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -56,7 +79,7 @@ export const SessionDetailPage: React.FC = () => {
   const [newStudentIdForCorrection, setNewStudentIdForCorrection] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadSessionData = async (silent = false) => {
+  const loadSessionData = useCallback(async (silent = false) => {
     if (!sessionId) return;
     try {
       if (!silent) setIsLoading(true);
@@ -80,210 +103,314 @@ export const SessionDetailPage: React.FC = () => {
     } finally {
       if (!silent) setIsLoading(false);
     }
-  };
+  }, [sessionId, classroom]);
 
   useEffect(() => {
     loadSessionData();
   }, [sessionId]);
 
-  // Handle native fullscreen changes (e.g. Esc key)
+  // Check FaceDetector API support
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    };
+    setIsFaceDetectorSupported('FaceDetector' in window);
+    if ('FaceDetector' in window) {
+      try {
+        faceDetectorRef.current = new window.FaceDetector({ maxDetectedFaces: 50, fastMode: true });
+      } catch (_) {
+        setIsFaceDetectorSupported(false);
+      }
+    }
   }, []);
 
-  // Cleanup webcam stream on component unmount
+  // Handle native fullscreen changes
+  useEffect(() => {
+    const handleFSChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFSChange);
+    return () => document.removeEventListener('fullscreenchange', handleFSChange);
+  }, []);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (autoScanIntervalRef.current) clearInterval(autoScanIntervalRef.current);
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
       }
-      if (autoScanIntervalRef.current) {
-        clearInterval(autoScanIntervalRef.current);
-      }
     };
   }, []);
 
-  // Webcam stream handlers
+  // ─── Canvas face tracking render loop ───────────────────────────────────────
+  const renderTrackingOverlay = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!canvas || !video || !video.videoWidth) {
+      animFrameRef.current = requestAnimationFrame(renderTrackingOverlay);
+      return;
+    }
+
+    // Keep canvas in sync with displayed video size
+    const { clientWidth: dispW, clientHeight: dispH } = video;
+    if (canvas.width !== dispW || canvas.height !== dispH) {
+      canvas.width = dispW;
+      canvas.height = dispH;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      animFrameRef.current = requestAnimationFrame(renderTrackingOverlay);
+      return;
+    }
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Scale factors from native video res → displayed size
+    const scaleX = dispW / video.videoWidth;
+    const scaleY = dispH / video.videoHeight;
+
+    // Draw bounding boxes for each tracked face
+    lastDetectedFacesRef.current.forEach((face, i) => {
+      const x = face.box.x * scaleX;
+      const y = face.box.y * scaleY;
+      const w = face.box.width * scaleX;
+      const h = face.box.height * scaleY;
+
+      const color = isAutoScan ? '#34d399' : '#818cf8'; // emerald in auto, indigo in manual
+
+      // Draw main rectangle
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 6);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Corner accent marks
+      const cs = 12; // corner size
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#fff';
+      // TL
+      ctx.beginPath(); ctx.moveTo(x, y + cs); ctx.lineTo(x, y); ctx.lineTo(x + cs, y); ctx.stroke();
+      // TR
+      ctx.beginPath(); ctx.moveTo(x + w - cs, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + cs); ctx.stroke();
+      // BL
+      ctx.beginPath(); ctx.moveTo(x, y + h - cs); ctx.lineTo(x, y + h); ctx.lineTo(x + cs, y + h); ctx.stroke();
+      // BR
+      ctx.beginPath(); ctx.moveTo(x + w - cs, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - cs); ctx.stroke();
+
+      // Face index badge
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y - 20, 34, 18);
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText(`#${i + 1}`, x + 5, y - 6);
+    });
+
+    animFrameRef.current = requestAnimationFrame(renderTrackingOverlay);
+  }, [isAutoScan]);
+
+  // ─── Face detection loop (runs every ~300ms to update face positions) ────────
+  useEffect(() => {
+    if (!isWebcamActive || !isFaceDetectorSupported || !faceDetectorRef.current) return;
+
+    let cancelled = false;
+    let faceIdx = 0;
+
+    const detectLoop = async () => {
+      if (cancelled || !videoRef.current || !videoRef.current.videoWidth) {
+        if (!cancelled) setTimeout(detectLoop, 300);
+        return;
+      }
+      try {
+        const faces = await faceDetectorRef.current!.detect(videoRef.current);
+        if (!cancelled) {
+          lastDetectedFacesRef.current = faces.map((f) => ({ box: f.boundingBox, id: faceIdx++ }));
+          setDetectedFaceCount(faces.length);
+        }
+      } catch (_) { /* ignore during teardown */ }
+      if (!cancelled) setTimeout(detectLoop, 300);
+    };
+
+    detectLoop();
+    return () => { cancelled = true; };
+  }, [isWebcamActive, isFaceDetectorSupported]);
+
+  // ─── Canvas render loop start/stop ──────────────────────────────────────────
+  useEffect(() => {
+    if (isWebcamActive) {
+      animFrameRef.current = requestAnimationFrame(renderTrackingOverlay);
+    } else {
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+        animFrameRef.current = null;
+      }
+      // Clear canvas
+      const canvas = canvasRef.current;
+      if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    return () => {
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    };
+  }, [isWebcamActive, renderTrackingOverlay]);
+
+  // ─── Webcam control ──────────────────────────────────────────────────────────
   const startWebcam = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      if (videoRef.current) videoRef.current.srcObject = stream;
       setIsWebcamActive(true);
-    } catch (err) {
+      setScanStats({ total: 0, marked: 0 });
+    } catch {
       toast.error('Camera access denied or webcam unavailable');
     }
   };
 
   const stopWebcam = () => {
-    // Clear auto scan
-    if (autoScanIntervalRef.current) {
-      clearInterval(autoScanIntervalRef.current);
-      autoScanIntervalRef.current = null;
-    }
+    if (autoScanIntervalRef.current) { clearInterval(autoScanIntervalRef.current); autoScanIntervalRef.current = null; }
     setIsAutoScan(false);
-
-    // Stop all media tracks to turn off camera hardware LED
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
+    if (streamRef.current) { streamRef.current.getTracks().forEach((t) => t.stop()); streamRef.current = null; }
+    if (videoRef.current) videoRef.current.srcObject = null;
     setIsWebcamActive(false);
-
-    // Exit fullscreen if active
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    }
+    setDetectedFaceCount(0);
+    lastDetectedFacesRef.current = [];
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   };
 
   const toggleFullscreen = () => {
     if (!videoContainerRef.current) return;
-
     if (!document.fullscreenElement) {
-      videoContainerRef.current.requestFullscreen().catch((err) => {
-        toast.error(`Error enabling fullscreen: ${err.message}`);
-      });
+      videoContainerRef.current.requestFullscreen().catch((e) => toast.error(`Fullscreen error: ${e.message}`));
     } else {
       document.exitFullscreen().catch(() => {});
     }
   };
 
-  // Process single frame for recognition
-  const scanCurrentFrame = useCallback(
-    async (isAuto = false) => {
-      if (!videoRef.current || !sessionId || !isWebcamActive || isScanningInProgressRef.current) {
-        return;
-      }
+  // ─── Crop a face region from the live video feed ─────────────────────────────
+  const cropFaceBlob = (faceBox: DOMRectReadOnly): Promise<Blob | null> => {
+    return new Promise((resolve) => {
+      const video = videoRef.current;
+      if (!video) return resolve(null);
 
-      isScanningInProgressRef.current = true;
-      if (!isAuto) setIsRecognizing(true);
+      // Add 15% padding around face for better recognition
+      const pad = 0.15;
+      const pw = faceBox.width * pad;
+      const ph = faceBox.height * pad;
+      const sx = Math.max(0, faceBox.x - pw);
+      const sy = Math.max(0, faceBox.y - ph);
+      const sw = Math.min(video.videoWidth - sx, faceBox.width + pw * 2);
+      const sh = Math.min(video.videoHeight - sy, faceBox.height + ph * 2);
 
-      try {
-        const video = videoRef.current;
-        if (!video.videoWidth || !video.videoHeight) {
-          isScanningInProgressRef.current = false;
-          if (!isAuto) setIsRecognizing(false);
-          return;
+      const canvas = document.createElement('canvas');
+      canvas.width = sw;
+      canvas.height = sh;
+      canvas.getContext('2d')?.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92);
+    });
+  };
+
+  // ─── Crop full frame (fallback when FaceDetector not available) ──────────────
+  const captureFullFrameBlob = (): Promise<Blob | null> => {
+    return new Promise((resolve) => {
+      const video = videoRef.current;
+      if (!video || !video.videoWidth) return resolve(null);
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d')?.drawImage(video, 0, 0);
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9);
+    });
+  };
+
+  // ─── Send one blob to backend and handle result ───────────────────────────────
+  const recognizeFaceBlob = useCallback(async (blob: Blob, isAuto: boolean) => {
+    if (!sessionId) return;
+    try {
+      const res = await recognitionApi.recognize(sessionId, blob);
+      if (res.attendance_id && res.student_reg_number) {
+        const now = Date.now();
+        const lastSeen = recentDetectionsRef.current.get(res.student_reg_number) || 0;
+        const conf = Math.round((res.confidence_score || 0) * 100);
+
+        if (now - lastSeen > 8000) {
+          recentDetectionsRef.current.set(res.student_reg_number, now);
+          toast.success(`✅ ${res.student_name} (${res.student_reg_number}) • ${conf}% match`, { duration: 3000 });
+          setRecentVerifications((prev) => [
+            { name: res.student_name || res.student_reg_number, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), confidence: conf },
+            ...prev.slice(0, 4),
+          ]);
+          setScanStats((s) => ({ ...s, marked: s.marked + 1 }));
+          loadSessionData(true);
         }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        canvas.toBlob(
-          async (blob) => {
-            if (!blob) {
-              if (!isAuto) toast.error('Failed to capture frame');
-              isScanningInProgressRef.current = false;
-              if (!isAuto) setIsRecognizing(false);
-              return;
-            }
-
-            try {
-              const res = await recognitionApi.recognize(sessionId, blob);
-              if (res.attendance_id && res.student_reg_number) {
-                const now = Date.now();
-                const lastSeen = recentDetectionsRef.current.get(res.student_reg_number) || 0;
-                const matchConfidence = Math.round((res.confidence_score || 0) * 100);
-
-                setLastDetectionInfo({
-                  name: res.student_name || res.student_reg_number,
-                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-                  confidence: matchConfidence,
-                });
-
-                // Only show toast if not detected within last 8 seconds to prevent spam
-                if (now - lastSeen > 8000) {
-                  recentDetectionsRef.current.set(res.student_reg_number, now);
-                  toast.success(
-                    `Verified: ${res.student_name} (${res.student_reg_number}) • ${matchConfidence}% match`,
-                    { icon: '🎯' }
-                  );
-                  loadSessionData(true);
-                }
-              } else if (!isAuto) {
-                toast.error(res.message || 'Face not recognized');
-              }
-            } catch (err: any) {
-              if (!isAuto) {
-                toast.error(err.response?.data?.detail || 'Recognition failed');
-              }
-            } finally {
-              isScanningInProgressRef.current = false;
-              if (!isAuto) setIsRecognizing(false);
-            }
-          },
-          'image/jpeg',
-          0.88
-        );
-      } catch (err) {
-        if (!isAuto) toast.error('Webcam capture error');
-        isScanningInProgressRef.current = false;
-        if (!isAuto) setIsRecognizing(false);
+      } else if (!isAuto) {
+        toast.error(res.message || 'Face not recognized');
       }
-    },
-    [sessionId, isWebcamActive]
-  );
+    } catch (err: any) {
+      if (!isAuto) toast.error(err.response?.data?.detail || 'Recognition failed');
+    }
+  }, [sessionId, loadSessionData]);
 
-  // Auto-Scan interval effect
+  // ─── Scan all visible faces at once (called by both manual & auto) ────────────
+  const scanAllFaces = useCallback(async (isAuto: boolean) => {
+    if (!videoRef.current || !sessionId || isScanningRef.current) return;
+    if (!videoRef.current.videoWidth) return;
+
+    isScanningRef.current = true;
+    try {
+      const faces = lastDetectedFacesRef.current;
+
+      if (faces.length > 0 && isFaceDetectorSupported) {
+        // Crop and recognize all detected faces in parallel
+        setScanStats((s) => ({ ...s, total: s.total + faces.length }));
+        const blobs = await Promise.all(faces.map((f) => cropFaceBlob(f.box)));
+        const validBlobs = blobs.filter((b): b is Blob => !!b);
+        if (validBlobs.length > 0) {
+          await Promise.all(validBlobs.map((b) => recognizeFaceBlob(b, isAuto)));
+        }
+      } else {
+        // Fallback: full frame
+        const blob = await captureFullFrameBlob();
+        if (blob) {
+          setScanStats((s) => ({ ...s, total: s.total + 1 }));
+          await recognizeFaceBlob(blob, isAuto);
+        }
+      }
+    } finally {
+      isScanningRef.current = false;
+    }
+  }, [sessionId, isFaceDetectorSupported, recognizeFaceBlob]);
+
+  // ─── Auto-scan interval ───────────────────────────────────────────────────────
   useEffect(() => {
     if (isAutoScan && isWebcamActive) {
-      // Run every 1.5 seconds
       autoScanIntervalRef.current = setInterval(() => {
-        scanCurrentFrame(true);
-      }, 1500);
+        scanAllFaces(true);
+      }, 2000); // every 2s — scan all faces
     } else {
-      if (autoScanIntervalRef.current) {
-        clearInterval(autoScanIntervalRef.current);
-        autoScanIntervalRef.current = null;
-      }
+      if (autoScanIntervalRef.current) { clearInterval(autoScanIntervalRef.current); autoScanIntervalRef.current = null; }
     }
+    return () => { if (autoScanIntervalRef.current) clearInterval(autoScanIntervalRef.current); };
+  }, [isAutoScan, isWebcamActive, scanAllFaces]);
 
-    return () => {
-      if (autoScanIntervalRef.current) {
-        clearInterval(autoScanIntervalRef.current);
-      }
-    };
-  }, [isAutoScan, isWebcamActive, scanCurrentFrame]);
-
-  const handleManualScan = () => {
-    scanCurrentFrame(false);
-  };
+  const handleManualScan = () => scanAllFaces(false);
 
   const handleFileUploadRecognize = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files[0] || !sessionId) return;
     const file = e.target.files[0];
     try {
-      setIsRecognizing(true);
       const res = await recognitionApi.recognize(sessionId, file);
       if (res.attendance_id) {
-        toast.success(
-          `Recognized: ${res.student_name} (${res.student_reg_number}) - ${Math.round((res.confidence_score || 0) * 100)}% match!`
-        );
+        toast.success(`Recognized: ${res.student_name} (${res.student_reg_number}) - ${Math.round((res.confidence_score || 0) * 100)}% match!`);
         loadSessionData(true);
       } else {
         toast.error(res.message || 'Face not recognized');
       }
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Recognition failed');
-    } finally {
-      setIsRecognizing(false);
     }
   };
 
@@ -292,10 +419,7 @@ export const SessionDetailPage: React.FC = () => {
     if (!sessionId || !selectedStudentForManual) return;
     try {
       setIsSubmitting(true);
-      await attendanceApi.mark({
-        session_id: sessionId,
-        student_id: selectedStudentForManual,
-      });
+      await attendanceApi.mark({ session_id: sessionId, student_id: selectedStudentForManual });
       toast.success('Attendance marked manually');
       setIsManualModalOpen(false);
       setSelectedStudentForManual('');
@@ -335,12 +459,9 @@ export const SessionDetailPage: React.FC = () => {
   };
 
   const handleDownloadCSV = () => {
-    if (sessionId) {
-      reportsApi.downloadSessionReport(sessionId);
-    }
+    if (sessionId) reportsApi.downloadSessionReport(sessionId);
   };
 
-  // Map attendance record by student ID
   const markedStudentIds = new Set(attendanceRecords.map((r) => r.student_id));
 
   return (
@@ -389,15 +510,22 @@ export const SessionDetailPage: React.FC = () => {
 
       {/* AI Live Face Recognition Panel */}
       {session?.is_active && (
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
+          {/* Panel Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center text-white shadow-lg shadow-emerald-900/30">
                 <Camera className="w-5 h-5" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-bold text-slate-100 text-base">AI Live Face Recognition</h3>
+                  {isWebcamActive && (
+                    <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 text-[10px] font-semibold border border-slate-700">
+                      <Users className="w-3 h-3" />
+                      {detectedFaceCount} {detectedFaceCount === 1 ? 'face' : 'faces'} detected
+                    </span>
+                  )}
                   {isWebcamActive && isAutoScan && (
                     <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold border border-emerald-500/30">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
@@ -405,11 +533,15 @@ export const SessionDetailPage: React.FC = () => {
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-400">Continuous biometric scanning or single snapshot verification</p>
+                <p className="text-xs text-slate-400">
+                  {isFaceDetectorSupported
+                    ? 'Multi-face live tracking — tracks all faces simultaneously'
+                    : 'Live face recognition — tracks the whole frame (upgrade browser for multi-face)'}
+                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               {isWebcamActive && (
                 <>
                   <button
@@ -419,16 +551,14 @@ export const SessionDetailPage: React.FC = () => {
                         ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-950/50'
                         : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
                     }`}
-                    title={isAutoScan ? 'Turn off Auto-Scan' : 'Turn on Continuous Auto-Scan'}
                   >
                     <Radio className={`w-3.5 h-3.5 ${isAutoScan ? 'text-emerald-400 animate-pulse' : ''}`} />
                     <span>{isAutoScan ? 'Auto-Scan: ON' : 'Auto-Scan: OFF'}</span>
                   </button>
-
                   <button
                     onClick={toggleFullscreen}
                     className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-                    title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Camera Preview'}
+                    title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
                   >
                     {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                   </button>
@@ -454,115 +584,97 @@ export const SessionDetailPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-            {/* Webcam Video Viewport / Fullscreen Container */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-5">
+            {/* ── Camera Viewport ── */}
             <div
               ref={videoContainerRef}
-              className={`relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex items-center justify-center transition-all ${
+              className={`relative bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden flex items-center justify-center md:col-span-3 transition-all ${
                 isFullscreen
-                  ? 'w-screen h-screen rounded-none border-none p-0 bg-black'
-                  : 'h-80 w-full'
+                  ? 'w-screen h-screen rounded-none border-none bg-black'
+                  : 'h-96'
               }`}
             >
+              {/* Live video stream */}
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className={`w-full h-full object-cover ${!isWebcamActive && 'hidden'}`}
+                className={`w-full h-full object-cover ${!isWebcamActive ? 'hidden' : ''}`}
               />
 
-              {/* Camera Inactive Screen */}
+              {/* Canvas overlay for face tracking boxes */}
+              <canvas
+                ref={canvasRef}
+                className="absolute inset-0 w-full h-full pointer-events-none"
+                style={{ display: isWebcamActive ? 'block' : 'none' }}
+              />
+
+              {/* Camera inactive placeholder */}
               {!isWebcamActive && (
-                <div className="text-center space-y-3 text-slate-500 p-6">
-                  <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mx-auto text-slate-600">
-                    <Camera className="w-7 h-7" />
+                <div className="text-center space-y-3 p-8 flex flex-col items-center">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600">
+                    <Camera className="w-8 h-8" />
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-slate-400">Camera stream inactive</p>
-                    <p className="text-[11px] text-slate-600">Click &quot;Start Camera&quot; to begin face verification</p>
+                    <p className="text-sm font-semibold text-slate-400">Camera stream inactive</p>
+                    <p className="text-xs text-slate-600 mt-1">Start camera to begin live multi-face tracking</p>
                   </div>
+                  <button
+                    onClick={startWebcam}
+                    className="mt-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all shadow-lg"
+                  >
+                    Start Camera
+                  </button>
                 </div>
               )}
 
-              {/* Active Camera Overlays */}
+              {/* Active camera HUD overlays */}
               {isWebcamActive && (
                 <>
-                  {/* Top HUD overlay */}
+                  {/* Top status bar */}
                   <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none">
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 backdrop-blur-md border border-slate-800/80 text-[11px] text-slate-300 font-medium flex items-center gap-1.5 shadow-lg">
+                      <span className={`w-2 h-2 rounded-full ${isAutoScan ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                      {isAutoScan ? `Auto-Scanning ${detectedFaceCount > 0 ? `• ${detectedFaceCount} faces` : ''}` : 'Manual Mode'}
+                    </span>
                     <div className="flex items-center gap-2 pointer-events-auto">
-                      <span className="px-2.5 py-1 rounded-lg bg-slate-950/80 backdrop-blur-md border border-slate-800/80 text-[11px] text-slate-300 font-medium flex items-center gap-1.5 shadow-lg">
-                        <span className={`w-2 h-2 rounded-full ${isAutoScan ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                        {isAutoScan ? 'Continuous Recognition Mode' : 'Manual Scan Mode'}
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={toggleFullscreen}
-                      className="pointer-events-auto p-2 rounded-lg bg-slate-950/80 hover:bg-slate-900 backdrop-blur-md border border-slate-800/80 text-slate-300 shadow-lg transition-colors"
-                      title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-                    >
-                      {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {/* Centered Facial Reticle / Guide Box */}
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <div
-                      className={`relative w-48 h-56 rounded-2xl border-2 transition-all duration-300 ${
-                        isRecognizing
-                          ? 'border-emerald-400 shadow-[0_0_25px_rgba(52,211,153,0.5)] scale-105'
-                          : isAutoScan
-                          ? 'border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.2)]'
-                          : 'border-slate-600/40 border-dashed'
-                      }`}
-                    >
-                      {/* Corner marks */}
-                      <div className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-emerald-400 rounded-tl" />
-                      <div className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-emerald-400 rounded-tr" />
-                      <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-emerald-400 rounded-bl" />
-                      <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-2 border-r-2 border-emerald-400 rounded-br" />
-
-                      {/* Scanning laser effect when recognizing or auto-scanning */}
-                      {(isRecognizing || isAutoScan) && (
-                        <div className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-pulse top-1/2 -translate-y-1/2" />
+                      {isAutoScan && scanStats.marked > 0 && (
+                        <span className="px-2.5 py-1 rounded-lg bg-emerald-950/90 backdrop-blur-md border border-emerald-500/40 text-[11px] text-emerald-300 font-medium shadow-lg">
+                          {scanStats.marked} marked this session
+                        </span>
                       )}
+                      <button
+                        onClick={toggleFullscreen}
+                        className="p-2 rounded-lg bg-slate-950/80 hover:bg-slate-900 backdrop-blur-md border border-slate-800/80 text-slate-300 shadow-lg transition-colors"
+                      >
+                        {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                      </button>
                     </div>
                   </div>
 
-                  {/* Last Detected Notification HUD */}
-                  {lastDetectionInfo && (
-                    <div className="absolute top-14 inset-x-4 flex justify-center pointer-events-none">
-                      <div className="px-3.5 py-1.5 rounded-xl bg-emerald-950/90 backdrop-blur-md border border-emerald-500/40 text-emerald-200 text-xs font-semibold flex items-center gap-2 shadow-2xl animate-fade-in">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>
-                          {lastDetectionInfo.name} ({lastDetectionInfo.confidence}%)
-                        </span>
-                        <span className="text-[10px] text-emerald-400/70 font-mono font-normal">
-                          {lastDetectionInfo.time}
-                        </span>
+                  {/* No faces hint */}
+                  {isFaceDetectorSupported && detectedFaceCount === 0 && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="px-4 py-2 rounded-xl bg-slate-950/70 backdrop-blur-sm border border-slate-700/50 text-slate-400 text-xs font-medium">
+                        No faces detected — point camera at students
                       </div>
                     </div>
                   )}
 
-                  {/* Bottom Controls Bar */}
+                  {/* Bottom controls */}
                   <div className="absolute bottom-4 inset-x-4 flex items-center justify-center gap-3">
                     <button
                       onClick={handleManualScan}
-                      disabled={isRecognizing}
-                      className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-full shadow-2xl flex items-center gap-2 transition-all disabled:opacity-50 hover:scale-105"
+                      disabled={isScanningRef.current}
+                      className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs rounded-full shadow-2xl flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
                     >
-                      {isRecognizing ? (
-                        <>
-                          <Scan className="w-4 h-4 animate-spin" />
-                          <span>Recognizing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4" />
-                          <span>{isAutoScan ? 'Instant Scan Now' : 'Scan & Verify Attendance'}</span>
-                        </>
-                      )}
+                      <Sparkles className="w-4 h-4" />
+                      <span>
+                        {isFaceDetectorSupported && detectedFaceCount > 1
+                          ? `Scan All ${detectedFaceCount} Faces`
+                          : 'Scan & Verify Attendance'}
+                      </span>
                     </button>
 
                     {isFullscreen && (
@@ -578,25 +690,60 @@ export const SessionDetailPage: React.FC = () => {
               )}
             </div>
 
-            {/* File Upload Option */}
-            <div className="border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-2xl p-6 text-center space-y-3 bg-slate-950/40 relative h-80 flex flex-col items-center justify-center transition-colors">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileUploadRecognize}
-                disabled={isRecognizing}
-                className="absolute inset-0 opacity-0 cursor-pointer"
-              />
-              <div className="w-12 h-12 rounded-2xl bg-indigo-950/60 border border-indigo-800/50 flex items-center justify-center text-indigo-400">
-                <Sparkles className="w-6 h-6" />
+            {/* ── Side Panel: Recent Verifications + Upload ── */}
+            <div className="md:col-span-2 flex flex-col gap-4">
+              {/* Recent Verifications feed */}
+              {isWebcamActive && (
+                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 flex-1 space-y-3 min-h-36">
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Live Verification Feed</p>
+                  {recentVerifications.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-6 text-slate-600 space-y-1">
+                      <Camera className="w-6 h-6" />
+                      <p className="text-xs">Verified students will appear here</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {recentVerifications.map((v, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900 border border-slate-800 gap-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-6 h-6 rounded-lg bg-emerald-950 flex items-center justify-center flex-shrink-0">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            </div>
+                            <p className="text-xs font-semibold text-slate-200 truncate">{v.name}</p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-[10px] text-emerald-400 font-semibold">{v.confidence}%</p>
+                            <p className="text-[10px] text-slate-500 font-mono">{v.time}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* File Upload fallback */}
+              <div className="border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-2xl p-5 text-center space-y-3 bg-slate-950/40 relative flex flex-col items-center justify-center transition-colors min-h-40">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUploadRecognize}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
+                />
+                <div className="w-10 h-10 rounded-2xl bg-indigo-950/60 border border-indigo-800/50 flex items-center justify-center text-indigo-400">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-xs text-slate-200 font-semibold">Upload Photo for AI Verify</p>
+                  <p className="text-[10px] text-slate-400">Drag or click to upload a student snapshot</p>
+                </div>
+                <span className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-medium text-slate-300">
+                  Browse File
+                </span>
               </div>
-              <div className="space-y-1">
-                <p className="text-xs text-slate-200 font-semibold">Upload Photo Snapshot for AI Verification</p>
-                <p className="text-[11px] text-slate-400">Upload a single photo of a student to mark attendance</p>
-              </div>
-              <span className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] font-medium text-slate-300">
-                Browse Image File
-              </span>
             </div>
           </div>
         </div>
@@ -720,9 +867,7 @@ export const SessionDetailPage: React.FC = () => {
               className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
               required
             >
-              <option value="" disabled>
-                Select un-marked student...
-              </option>
+              <option value="" disabled>Select un-marked student...</option>
               {enrolledStudents
                 .filter((s) => !markedStudentIds.has(s.id))
                 .map((s) => (
