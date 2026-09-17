@@ -340,7 +340,7 @@ export const SessionDetailPage: React.FC = () => {
           recentDetectionsRef.current.set(res.student_reg_number, now);
           toast.success(`✅ ${res.student_name} (${res.student_reg_number}) • ${conf}% match`, { duration: 3000 });
           setRecentVerifications((prev) => [
-            { name: res.student_name || res.student_reg_number, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), confidence: conf },
+            { name: (res.student_name || res.student_reg_number || 'Unknown'), time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }), confidence: conf },
             ...prev.slice(0, 4),
           ]);
           setScanStats((s) => ({ ...s, marked: s.marked + 1 }));
