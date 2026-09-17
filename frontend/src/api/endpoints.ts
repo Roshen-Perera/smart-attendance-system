@@ -236,6 +236,14 @@ export const recognitionApi = {
     });
     return res.data;
   },
+  recognizeMulti: async (sessionId: string, file: Blob | File): Promise<MultiFaceRecognitionResult> => {
+    const formData = new FormData();
+    formData.append('file', file, 'capture.jpg');
+    const res = await api.post(`/recognition/recognize-multi?session_id=${sessionId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
 };
 
 // Eligibility
