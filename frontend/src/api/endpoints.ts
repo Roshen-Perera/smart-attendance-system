@@ -22,6 +22,7 @@ import type {
   FaceEmbedding,
   EligibilityResult,
   RecognitionResult,
+  MultiFaceRecognitionResult,
 } from '../types';
 
 // Auth
@@ -201,9 +202,9 @@ export const attendanceApi = {
 
 // Faces & Embeddings
 export const facesApi = {
-  upload: async (regNumber: string, file: File) => {
+  upload: async (regNumber: string, file: File | Blob) => {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', file, file instanceof File ? file.name : 'camera_capture.jpg');
     const res = await api.post(`/faces/upload/${encodeURIComponent(regNumber)}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
@@ -232,6 +233,14 @@ export const recognitionApi = {
     const formData = new FormData();
     formData.append('file', file, 'capture.jpg');
     const res = await api.post(`/recognition/recognize?session_id=${sessionId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+  recognizeMulti: async (sessionId: string, file: Blob | File): Promise<MultiFaceRecognitionResult> => {
+    const formData = new FormData();
+    formData.append('file', file, 'capture.jpg');
+    const res = await api.post(`/recognition/recognize-multi?session_id=${sessionId}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return res.data;

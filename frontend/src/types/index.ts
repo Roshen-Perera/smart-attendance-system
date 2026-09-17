@@ -168,8 +168,28 @@ export interface RecognitionResult {
   confidence_score?: number;
 }
 
+export interface MultiFaceInfo {
+  bbox: [number, number, number, number];
+  det_score?: number;
+  status: 'newly_marked' | 'already_marked' | 'unrecognized';
+  student_id?: string;
+  student_name?: string;
+  student_reg_number?: string;
+  confidence_score?: number;
+  attendance_id?: string;
+}
+
+export interface MultiFaceRecognitionResult {
+  total_faces: number;
+  recognized_count: number;
+  newly_marked_count: number;
+  faces: MultiFaceInfo[];
+  message?: string;
+}
+
 export interface AuthResponse {
   access_token: string;
   token_type: string;
   user: User;
 }
+
