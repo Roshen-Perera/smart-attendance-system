@@ -201,9 +201,9 @@ export const attendanceApi = {
 
 // Faces & Embeddings
 export const facesApi = {
-  upload: async (regNumber: string, file: File) => {
+  upload: async (regNumber: string, file: File | Blob) => {
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', file, file instanceof File ? file.name : 'camera_capture.jpg');
     const res = await api.post(`/faces/upload/${encodeURIComponent(regNumber)}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
