@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -10,6 +10,10 @@ import {
   Edit2,
   Trash2,
   Sparkles,
+  Maximize2,
+  Minimize2,
+  Radio,
+  Scan,
 } from 'lucide-react';
 import {
   sessionsApi,
@@ -34,7 +38,16 @@ export const SessionDetailPage: React.FC = () => {
   // AI Recognition state
   const [isWebcamActive, setIsWebcamActive] = useState(false);
   const [isRecognizing, setIsRecognizing] = useState(false);
+  const [isAutoScan, setIsAutoScan] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [lastDetectionInfo, setLastDetectionInfo] = useState<{ name: string; time: string; confidence: number } | null>(null);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const videoContainerRef = useRef<HTMLDivElement | null>(null);
+  const autoScanIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isScanningInProgressRef = useRef(false);
+  const recentDetectionsRef = useRef<Map<string, number>>(new Map());
 
   // Manual & Correction modal state
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -43,10 +56,10 @@ export const SessionDetailPage: React.FC = () => {
   const [newStudentIdForCorrection, setNewStudentIdForCorrection] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadSessionData = async () => {
+  const loadSessionData = async (silent = false) => {
     if (!sessionId) return;
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       const [sess, records] = await Promise.all([
         sessionsApi.getById(sessionId),
         attendanceApi.getBySession(sessionId),
@@ -54,7 +67,7 @@ export const SessionDetailPage: React.FC = () => {
       setSession(sess);
       setAttendanceRecords(records);
 
-      if (sess.class_id) {
+      if (sess.class_id && (!classroom || !silent)) {
         const [cls, students] = await Promise.all([
           classesApi.getById(sess.class_id),
           classesApi.getStudents(sess.class_id),
@@ -63,9 +76,9 @@ export const SessionDetailPage: React.FC = () => {
         setEnrolledStudents(students);
       }
     } catch (err) {
-      toast.error('Failed to load session details');
+      if (!silent) toast.error('Failed to load session details');
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
@@ -73,10 +86,37 @@ export const SessionDetailPage: React.FC = () => {
     loadSessionData();
   }, [sessionId]);
 
+  // Handle native fullscreen changes (e.g. Esc key)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  // Cleanup webcam stream on component unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+      if (autoScanIntervalRef.current) {
+        clearInterval(autoScanIntervalRef.current);
+      }
+    };
+  }, []);
+
   // Webcam stream handlers
   const startWebcam = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
@@ -87,48 +127,143 @@ export const SessionDetailPage: React.FC = () => {
   };
 
   const stopWebcam = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach((t) => t.stop());
+    // Clear auto scan
+    if (autoScanIntervalRef.current) {
+      clearInterval(autoScanIntervalRef.current);
+      autoScanIntervalRef.current = null;
+    }
+    setIsAutoScan(false);
+
+    // Stop all media tracks to turn off camera hardware LED
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
     setIsWebcamActive(false);
+
+    // Exit fullscreen if active
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
   };
 
-  const captureFrameAndRecognize = async () => {
-    if (!videoRef.current || !sessionId) return;
-    try {
-      setIsRecognizing(true);
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth || 640;
-      canvas.height = videoRef.current.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+  const toggleFullscreen = () => {
+    if (!videoContainerRef.current) return;
 
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          toast.error('Failed to capture camera frame');
-          setIsRecognizing(false);
+    if (!document.fullscreenElement) {
+      videoContainerRef.current.requestFullscreen().catch((err) => {
+        toast.error(`Error enabling fullscreen: ${err.message}`);
+      });
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  };
+
+  // Process single frame for recognition
+  const scanCurrentFrame = useCallback(
+    async (isAuto = false) => {
+      if (!videoRef.current || !sessionId || !isWebcamActive || isScanningInProgressRef.current) {
+        return;
+      }
+
+      isScanningInProgressRef.current = true;
+      if (!isAuto) setIsRecognizing(true);
+
+      try {
+        const video = videoRef.current;
+        if (!video.videoWidth || !video.videoHeight) {
+          isScanningInProgressRef.current = false;
+          if (!isAuto) setIsRecognizing(false);
           return;
         }
-        try {
-          const res = await recognitionApi.recognize(sessionId, blob);
-          if (res.attendance_id) {
-            toast.success(`Recognized: ${res.student_name} (${res.student_reg_number}) - ${Math.round((res.confidence_score || 0) * 100)}% match!`);
-            loadSessionData();
-          } else {
-            toast.error(res.message || 'Face not recognized');
-          }
-        } catch (err: any) {
-          toast.error(err.response?.data?.detail || 'Recognition failed');
-        } finally {
-          setIsRecognizing(false);
-        }
-      }, 'image/jpeg');
-    } catch (err) {
-      toast.error('Webcam capture error');
-      setIsRecognizing(false);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob(
+          async (blob) => {
+            if (!blob) {
+              if (!isAuto) toast.error('Failed to capture frame');
+              isScanningInProgressRef.current = false;
+              if (!isAuto) setIsRecognizing(false);
+              return;
+            }
+
+            try {
+              const res = await recognitionApi.recognize(sessionId, blob);
+              if (res.attendance_id && res.student_reg_number) {
+                const now = Date.now();
+                const lastSeen = recentDetectionsRef.current.get(res.student_reg_number) || 0;
+                const matchConfidence = Math.round((res.confidence_score || 0) * 100);
+
+                setLastDetectionInfo({
+                  name: res.student_name || res.student_reg_number,
+                  time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                  confidence: matchConfidence,
+                });
+
+                // Only show toast if not detected within last 8 seconds to prevent spam
+                if (now - lastSeen > 8000) {
+                  recentDetectionsRef.current.set(res.student_reg_number, now);
+                  toast.success(
+                    `Verified: ${res.student_name} (${res.student_reg_number}) • ${matchConfidence}% match`,
+                    { icon: '🎯' }
+                  );
+                  loadSessionData(true);
+                }
+              } else if (!isAuto) {
+                toast.error(res.message || 'Face not recognized');
+              }
+            } catch (err: any) {
+              if (!isAuto) {
+                toast.error(err.response?.data?.detail || 'Recognition failed');
+              }
+            } finally {
+              isScanningInProgressRef.current = false;
+              if (!isAuto) setIsRecognizing(false);
+            }
+          },
+          'image/jpeg',
+          0.88
+        );
+      } catch (err) {
+        if (!isAuto) toast.error('Webcam capture error');
+        isScanningInProgressRef.current = false;
+        if (!isAuto) setIsRecognizing(false);
+      }
+    },
+    [sessionId, isWebcamActive]
+  );
+
+  // Auto-Scan interval effect
+  useEffect(() => {
+    if (isAutoScan && isWebcamActive) {
+      // Run every 1.5 seconds
+      autoScanIntervalRef.current = setInterval(() => {
+        scanCurrentFrame(true);
+      }, 1500);
+    } else {
+      if (autoScanIntervalRef.current) {
+        clearInterval(autoScanIntervalRef.current);
+        autoScanIntervalRef.current = null;
+      }
     }
+
+    return () => {
+      if (autoScanIntervalRef.current) {
+        clearInterval(autoScanIntervalRef.current);
+      }
+    };
+  }, [isAutoScan, isWebcamActive, scanCurrentFrame]);
+
+  const handleManualScan = () => {
+    scanCurrentFrame(false);
   };
 
   const handleFileUploadRecognize = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,8 +273,10 @@ export const SessionDetailPage: React.FC = () => {
       setIsRecognizing(true);
       const res = await recognitionApi.recognize(sessionId, file);
       if (res.attendance_id) {
-        toast.success(`Recognized: ${res.student_name} (${res.student_reg_number}) - ${Math.round((res.confidence_score || 0) * 100)}% match!`);
-        loadSessionData();
+        toast.success(
+          `Recognized: ${res.student_name} (${res.student_reg_number}) - ${Math.round((res.confidence_score || 0) * 100)}% match!`
+        );
+        loadSessionData(true);
       } else {
         toast.error(res.message || 'Face not recognized');
       }
