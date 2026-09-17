@@ -75,6 +75,31 @@ class FaceService:
             embedding = embedding / norm
         return embedding.tolist()
 
+    def get_all_faces_with_embeddings(self, image_input: Union[str, bytes, np.ndarray]) -> List[dict]:
+        """
+        Extract bounding box and normalized 512-d embedding for ALL faces detected in the image.
+        Returns a list of dicts:
+        [{ "bbox": [x1, y1, x2, y2], "embedding": list[float], "det_score": float }, ...]
+        """
+        faces = self.detect_faces(image_input)
+        results = []
+        for face in faces:
+            embedding = face.embedding
+            norm = np.linalg.norm(embedding)
+            if norm > 0:
+                normalized_emb = (embedding / norm).tolist()
+            else:
+                normalized_emb = embedding.tolist()
+            
+            bbox = [float(x) for x in face.bbox]  # [x1, y1, x2, y2]
+            det_score = float(face.det_score) if hasattr(face, 'det_score') else 1.0
+            results.append({
+                "bbox": bbox,
+                "embedding": normalized_emb,
+                "det_score": det_score
+            })
+        return results
+
     @staticmethod
     def compute_similarity(emb1: Union[List[float], np.ndarray], emb2: Union[List[float], np.ndarray]) -> float:
         """

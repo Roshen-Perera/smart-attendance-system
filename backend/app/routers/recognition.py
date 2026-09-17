@@ -149,3 +149,163 @@ async def recognize_face(
     finally:
         if os.path.exists(filename):
             os.remove(filename)
+
+
+@router.post("/recognize-multi")
+async def recognize_multiple_faces(
+    file: UploadFile = File(...),
+    session_id: Optional[UUID] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Process an image containing one or more faces simultaneously.
+    Tracks, identifies, and marks attendance for all recognized students in the frame at once.
+    """
+    if not session_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Session ID is required"
+        )
+
+    session = db.get(models.Session, session_id)
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found"
+        )
+
+    if not session.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Session is closed. Attendance cannot be marked."
+        )
+
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    filename = os.path.join(TEMP_DIR, f"temp_multi_{uuid.uuid4()}.jpg")
+
+    contents = await file.read()
+    with open(filename, "wb") as f:
+        f.write(contents)
+
+    try:
+        faces_data = face_service.get_all_faces_with_embeddings(filename)
+        if not faces_data:
+            return {
+                "total_faces": 0,
+                "recognized_count": 0,
+                "newly_marked_count": 0,
+                "faces": []
+            }
+
+        # Filter embeddings to students enrolled in this class only
+        enrolled_records = (
+            db.query(models.Enrollment.student_id)
+            .filter(models.Enrollment.class_id == session.class_id)
+            .all()
+        )
+        enrolled_student_ids = [r[0] for r in enrolled_records]
+        if not enrolled_student_ids:
+            return {
+                "total_faces": len(faces_data),
+                "recognized_count": 0,
+                "newly_marked_count": 0,
+                "faces": [{"bbox": f["bbox"], "status": "unrecognized", "confidence_score": 0.0} for f in faces_data],
+                "message": "No students enrolled in this class"
+            }
+
+        stored_embeddings = (
+            db.query(models.FaceEmbedding)
+            .filter(models.FaceEmbedding.student_id.in_(enrolled_student_ids))
+            .all()
+        )
+
+        # Get all existing attendance records for this session
+        existing_records = (
+            db.query(models.AttendanceRecord.student_id)
+            .filter(models.AttendanceRecord.session_id == session_id)
+            .all()
+        )
+        already_marked_ids = set(r[0] for r in existing_records)
+
+        # Load student details lookup map
+        students_map = {
+            s.id: s
+            for s in db.query(models.Student).filter(models.Student.id.in_(enrolled_student_ids)).all()
+        }
+
+        results = []
+        newly_marked_count = 0
+        recognized_count = 0
+
+        for face_info in faces_data:
+            unknown_emb = face_info["embedding"]
+            bbox = face_info["bbox"]
+            det_score = face_info["det_score"]
+
+            best_student_id = None
+            best_confidence = -1.0
+
+            for stored in stored_embeddings:
+                score = face_service.compute_similarity(stored.embedding, unknown_emb)
+                if score > best_confidence:
+                    best_confidence = score
+                    best_student_id = stored.student_id
+
+            if best_student_id is not None and best_confidence >= SIMILARITY_THRESHOLD:
+                student = students_map.get(best_student_id)
+                recognized_count += 1
+
+                if best_student_id in already_marked_ids:
+                    results.append({
+                        "bbox": bbox,
+                        "det_score": det_score,
+                        "status": "already_marked",
+                        "student_id": str(best_student_id),
+                        "student_name": student.name if student else None,
+                        "student_reg_number": student.reg_number if student else None,
+                        "confidence_score": best_confidence
+                    })
+                else:
+                    # Mark attendance in database
+                    attendance = models.AttendanceRecord(
+                        student_id=best_student_id,
+                        session_id=session_id,
+                        confidence_score=best_confidence
+                    )
+                    db.add(attendance)
+                    db.commit()
+                    db.refresh(attendance)
+                    already_marked_ids.add(best_student_id)
+                    newly_marked_count += 1
+
+                    logger.info(
+                        f"Attendance marked via AI Multi-Scan: student={student.reg_number if student else best_student_id}, session={session_id}, confidence={best_confidence}"
+                    )
+
+                    results.append({
+                        "bbox": bbox,
+                        "det_score": det_score,
+                        "status": "newly_marked",
+                        "student_id": str(best_student_id),
+                        "student_name": student.name if student else None,
+                        "student_reg_number": student.reg_number if student else None,
+                        "confidence_score": best_confidence,
+                        "attendance_id": str(attendance.id)
+                    })
+            else:
+                results.append({
+                    "bbox": bbox,
+                    "det_score": det_score,
+                    "status": "unrecognized",
+                    "confidence_score": max(0.0, best_confidence)
+                })
+
+        return {
+            "total_faces": len(faces_data),
+            "recognized_count": recognized_count,
+            "newly_marked_count": newly_marked_count,
+            "faces": results
+        }
+    finally:
+        if os.path.exists(filename):
+            os.remove(filename)
