@@ -157,6 +157,8 @@ export interface EligibilityResult {
   attended_sessions: number;
   attendance_percentage: number;
   status: 'Eligible' | 'Not Eligible';
+  attended_dates?: string[];
+  missed_dates?: string[];
 }
 
 export interface RecognitionResult {
