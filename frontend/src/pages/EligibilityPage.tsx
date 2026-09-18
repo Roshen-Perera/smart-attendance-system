@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   Info,
   X,
-  User,
   GraduationCap
 } from 'lucide-react';
 import { classesApi, eligibilityApi } from '../api/endpoints';
