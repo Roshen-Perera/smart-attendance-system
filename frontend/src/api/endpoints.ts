@@ -23,6 +23,7 @@ import type {
   EligibilityResult,
   RecognitionResult,
   MultiFaceRecognitionResult,
+  ClassAnalytics,
 } from '../types';
 
 // Auth
@@ -280,5 +281,9 @@ export const reportsApi = {
     document.body.appendChild(link);
     link.click();
     link.remove();
+  },
+  getClassAnalytics: async (classId: string): Promise<ClassAnalytics> => {
+    const res = await api.get(`/reports/analytics/class/${classId}`);
+    return res.data;
   },
 };

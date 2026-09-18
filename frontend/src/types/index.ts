@@ -193,3 +193,24 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface AnalyticsTrend {
+  session_id: string;
+  session_date: string;
+  topic: string;
+  attended: number;
+  absent: number;
+}
+
+export interface ClassAnalytics {
+  class_id: string;
+  course_code: string;
+  course_name: string;
+  total_sessions: number;
+  total_students: number;
+  overall_attendance_percentage: number;
+  eligibility: {
+    eligible: number;
+    not_eligible: number;
+  };
+  trends: AnalyticsTrend[];
+}
