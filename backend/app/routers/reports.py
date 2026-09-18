@@ -123,3 +123,90 @@ def export_session_attendance_csv(
     headers = {"Content-Disposition": f"attachment; filename={filename}"}
     logger.info(f"Session attendance CSV report generated for session {session_id} by user {current_user.email}")
     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv", headers=headers)
+
+
+@router.get("/analytics/class/{class_id}")
+def get_class_analytics(
+    class_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
+):
+    classroom = db.get(models.Class, class_id)
+    if not classroom:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    sessions = (
+        db.query(models.Session)
+        .filter(models.Session.class_id == class_id)
+        .order_by(models.Session.session_date.asc())
+        .all()
+    )
+
+    enrollments = (
+        db.query(models.Enrollment)
+        .filter(models.Enrollment.class_id == class_id)
+        .all()
+    )
+
+    total_sessions_count = len(sessions)
+    total_students = len(enrollments)
+
+    # 1. Trend data: attendance per session
+    trend_data = []
+    for sess in sessions:
+        attended_count = (
+            db.query(models.AttendanceRecord)
+            .filter(models.AttendanceRecord.session_id == sess.id)
+            .count()
+        )
+        trend_data.append({
+            "session_id": str(sess.id),
+            "session_date": sess.session_date.isoformat(),
+            "topic": f"Session on {sess.session_date.strftime('%Y-%m-%d')}",
+            "attended": attended_count,
+            "absent": total_students - attended_count
+        })
+
+    # 2. Eligibility distribution
+    eligible_count = 0
+    not_eligible_count = 0
+
+    if total_sessions_count > 0:
+        for enrollment in enrollments:
+            student_id = enrollment.student_id
+            attended_count = (
+                db.query(models.AttendanceRecord)
+                .join(models.Session, models.AttendanceRecord.session_id == models.Session.id)
+                .filter(
+                    models.AttendanceRecord.student_id == student_id,
+                    models.Session.class_id == class_id
+                )
+                .count()
+            )
+            percentage = (attended_count / total_sessions_count) * 100
+            if percentage >= 80.0:
+                eligible_count += 1
+            else:
+                not_eligible_count += 1
+    else:
+        not_eligible_count = total_students
+
+    overall_attendance_percentage = 0.0
+    if total_sessions_count > 0 and total_students > 0:
+        total_possible_attendance = total_sessions_count * total_students
+        total_actual_attendance = sum([t["attended"] for t in trend_data])
+        overall_attendance_percentage = (total_actual_attendance / total_possible_attendance) * 100
+
+    return {
+        "class_id": str(class_id),
+        "course_code": classroom.course_code,
+        "course_name": classroom.course_name,
+        "total_sessions": total_sessions_count,
+        "total_students": total_students,
+        "overall_attendance_percentage": round(overall_attendance_percentage, 2),
+        "eligibility": {
+            "eligible": eligible_count,
+            "not_eligible": not_eligible_count
+        },
+        "trends": trend_data
+    }

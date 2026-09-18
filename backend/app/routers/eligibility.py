@@ -40,30 +40,52 @@ def calculate_eligibility(
             detail="Class not found"
         )
 
-    # Count total sessions
-    total_sessions = (
+    # Fetch all sessions for the class ordered by date
+    sessions = (
         db.query(models.Session)
         .filter(models.Session.class_id == class_id)
-        .count()
+        .order_by(models.Session.session_date.asc())
+        .all()
     )
+    total_sessions = len(sessions)
 
-    # Count attended sessions
-    attended_sessions = (
+    # Fetch attendance records for the student in this class
+    attended_records = (
         db.query(models.AttendanceRecord)
-        .join(
-            models.Session,
-            models.AttendanceRecord.session_id == models.Session.id
-        )
+        .join(models.Session, models.AttendanceRecord.session_id == models.Session.id)
         .filter(
             models.AttendanceRecord.student_id == student_id,
             models.Session.class_id == class_id
         )
-        .count()
+        .all()
     )
+    # Create a mapping from session_id to marked_at timestamp
+    attended_records_map = {str(record.session_id): record.marked_at for record in attended_records}
+    attended_session_ids = set(attended_records_map.keys())
+    attended_sessions = len(attended_session_ids)
+
+    attended_dates = []
+    missed_dates = []
+    session_details = []
+
+    for session in sessions:
+        date_str = session.session_date.strftime("%Y-%m-%d")
+        sess_id_str = str(session.id)
+        if sess_id_str in attended_session_ids:
+            marked_time = attended_records_map[sess_id_str]
+            time_str = marked_time.strftime("%I:%M %p") if marked_time else "-"
+            if marked_time:
+                attended_dates.append(f"{date_str} @ {time_str}")
+            else:
+                attended_dates.append(date_str)
+            session_details.append({"date": date_str, "time_in": time_str, "status": "Present"})
+        else:
+            missed_dates.append(date_str)
+            session_details.append({"date": date_str, "time_in": "-", "status": "Absent"})
 
     # Calculate percentage
     if total_sessions == 0:
-        percentage = 0
+        percentage = 0.0
     else:
         percentage = (attended_sessions / total_sessions) * 100
 
@@ -79,5 +101,8 @@ def calculate_eligibility(
         "total_sessions": total_sessions,
         "attended_sessions": attended_sessions,
         "attendance_percentage": round(percentage, 2),
-        "status": status
+        "status": status,
+        "attended_dates": attended_dates,
+        "missed_dates": missed_dates,
+        "session_details": session_details
     }

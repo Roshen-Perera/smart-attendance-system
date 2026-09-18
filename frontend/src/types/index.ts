@@ -150,6 +150,12 @@ export interface FaceEmbedding {
   created_at: string;
 }
 
+export interface SessionDetailItem {
+  date: string;
+  time_in: string | null;
+  status: string;
+}
+
 export interface EligibilityResult {
   student_id: string;
   class_id: string;
@@ -157,6 +163,9 @@ export interface EligibilityResult {
   attended_sessions: number;
   attendance_percentage: number;
   status: 'Eligible' | 'Not Eligible';
+  attended_dates?: string[];
+  missed_dates?: string[];
+  session_details?: SessionDetailItem[];
 }
 
 export interface RecognitionResult {
@@ -193,3 +202,24 @@ export interface AuthResponse {
   user: User;
 }
 
+export interface AnalyticsTrend {
+  session_id: string;
+  session_date: string;
+  topic: string;
+  attended: number;
+  absent: number;
+}
+
+export interface ClassAnalytics {
+  class_id: string;
+  course_code: string;
+  course_name: string;
+  total_sessions: number;
+  total_students: number;
+  overall_attendance_percentage: number;
+  eligibility: {
+    eligible: number;
+    not_eligible: number;
+  };
+  trends: AnalyticsTrend[];
+}
