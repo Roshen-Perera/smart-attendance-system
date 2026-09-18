@@ -160,9 +160,9 @@ def get_class_analytics(
             .count()
         )
         trend_data.append({
-            "session_id": sess.id,
+            "session_id": str(sess.id),
             "session_date": sess.session_date.isoformat(),
-            "topic": sess.topic or f"Session on {sess.session_date.strftime('%Y-%m-%d')}",
+            "topic": f"Session on {sess.session_date.strftime('%Y-%m-%d')}",
             "attended": attended_count,
             "absent": total_students - attended_count
         })
@@ -198,7 +198,7 @@ def get_class_analytics(
         overall_attendance_percentage = (total_actual_attendance / total_possible_attendance) * 100
 
     return {
-        "class_id": class_id,
+        "class_id": str(class_id),
         "course_code": classroom.course_code,
         "course_name": classroom.course_name,
         "total_sessions": total_sessions_count,
