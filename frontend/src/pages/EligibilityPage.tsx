@@ -273,7 +273,7 @@ export const EligibilityPage: React.FC = () => {
           onClick={() => setActiveModalStudent(null)}
         >
           <div
-            className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-xl w-full shadow-2xl space-y-6 relative text-slate-100"
+            className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 max-w-4xl w-full shadow-2xl space-y-6 relative text-slate-100"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
@@ -303,181 +303,192 @@ export const EligibilityPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Modal Content: Pie Chart & Details */}
-            <div className="flex flex-col sm:flex-row items-center gap-6">
-              {/* Pie Chart */}
-              <div className="flex flex-col items-center justify-center min-w-[190px]">
-                <div className="w-40 h-40 relative">
-                  {modalTotal > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#0f172a',
-                            borderColor: '#334155',
-                            borderRadius: '10px',
-                            fontSize: '11px',
-                          }}
-                          formatter={(val: any, name: any) => [`${val} sessions`, name]}
-                        />
-                        <Pie
-                          data={modalPieData}
-                          dataKey="value"
-                          nameKey="name"
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={40}
-                          outerRadius={60}
-                          paddingAngle={3}
-                          stroke="transparent"
-                        >
-                          {modalPieData.map((entry, idx) => (
-                            <Cell key={`modal-cell-${idx}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 text-center">
-                      No session data
-                    </div>
-                  )}
-                  {modalTotal > 0 && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                      <span className="text-lg font-bold text-slate-100">{modalPercentage}%</span>
-                      <span className="text-[10px] text-slate-400 uppercase tracking-wider">Attendance</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Legend */}
-                <div className="flex items-center gap-4 mt-2">
-                  <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                    Attended: {modalAttended}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-rose-400 font-medium">
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                    Missed: {modalMissed}
-                  </div>
-                </div>
-              </div>
-
-              {/* Status and Metric Cards */}
-              <div className="flex-1 space-y-3 w-full">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-400 uppercase">Examination Status</span>
-                  {modalIsEligible ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-700/50">
-                      <ShieldCheck className="w-4 h-4" /> Exam Approved
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-950/80 text-rose-400 border border-rose-700/50">
-                      <AlertTriangle className="w-4 h-4" /> Disqualified (&lt;80%)
-                    </span>
-                  )}
-                </div>
-
-                {/* Metric Grid */}
-                <div className="grid grid-cols-2 gap-2.5 pt-1">
-                  <div className="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl">
-                    <p className="text-[10px] text-slate-400 uppercase font-semibold">Total Conducted</p>
-                    <p className="text-sm font-bold text-slate-100">{modalTotal} Sessions</p>
-                  </div>
-                  <div className="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl">
-                    <p className="text-[10px] text-emerald-400 uppercase font-semibold">Attended</p>
-                    <p className="text-sm font-bold text-emerald-400">{modalAttended} Sessions</p>
-                  </div>
-                  <div className="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl">
-                    <p className="text-[10px] text-rose-400 uppercase font-semibold">Missed</p>
-                    <p className="text-sm font-bold text-rose-400">{modalMissed} Sessions</p>
-                  </div>
-                  <div className="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl">
-                    <p className="text-[10px] text-indigo-400 uppercase font-semibold">vs 80% Threshold</p>
-                    <p
-                      className={`text-sm font-bold font-mono ${
-                        Number(modalDeltaThreshold) >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                      }`}
-                    >
-                      {Number(modalDeltaThreshold) >= 0 ? `+${modalDeltaThreshold}%` : `${modalDeltaThreshold}%`}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            {/* Session Timeline Table */}
-            <div className="bg-slate-950/60 rounded-xl border border-slate-800 overflow-hidden flex flex-col">
-              <div className="px-4 py-2.5 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
-                <h4 className="text-xs font-semibold text-slate-300">Session Timeline</h4>
-                <span className="text-[10px] text-slate-500 font-mono">Total: {modalTotal}</span>
-              </div>
-              <div className="max-h-[140px] overflow-y-auto custom-scrollbar">
-                <table className="w-full text-left text-[11px]">
-                  <thead className="bg-slate-950/80 sticky top-0 border-b border-slate-800 text-slate-400">
-                    <tr>
-                      <th className="px-4 py-2 font-medium">Date</th>
-                      <th className="px-4 py-2 font-medium text-center">Time In</th>
-                      <th className="px-4 py-2 font-medium text-right">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                    {modalRes?.session_details?.length ? (
-                      modalRes.session_details.map((session, idx) => (
-                        <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
-                          <td className="px-4 py-2 text-slate-300 font-mono">{session.date}</td>
-                          <td className="px-4 py-2 text-center text-slate-400 font-mono">
-                            {session.time_in || '-'}
-                          </td>
-                          <td className="px-4 py-2 text-right">
-                            {session.status === 'Present' ? (
-                              <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold bg-emerald-950/50 px-2 py-0.5 rounded text-[10px]">
-                                <CheckCircle2 className="w-3 h-3" /> Present
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-rose-400 font-semibold bg-rose-950/50 px-2 py-0.5 rounded text-[10px]">
-                                <XCircle className="w-3 h-3" /> Absent
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))
+            {/* Modal Content: 2-Column Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+              
+              {/* Left Column (5 cols) */}
+              <div className="md:col-span-5 flex flex-col space-y-6">
+                
+                {/* Pie Chart Box */}
+                <div className="flex flex-col items-center justify-center bg-slate-950/40 rounded-xl border border-slate-800/50 p-6">
+                  <div className="w-40 h-40 relative">
+                    {modalTotal > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#0f172a',
+                              borderColor: '#334155',
+                              borderRadius: '10px',
+                              fontSize: '11px',
+                            }}
+                            formatter={(val: any, name: any) => [`${val} sessions`, name]}
+                          />
+                          <Pie
+                            data={modalPieData}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={40}
+                            outerRadius={60}
+                            paddingAngle={3}
+                            stroke="transparent"
+                          >
+                            {modalPieData.map((entry, idx) => (
+                              <Cell key={`modal-cell-${idx}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                        </PieChart>
+                      </ResponsiveContainer>
                     ) : (
-                      <tr>
-                        <td colSpan={3} className="px-4 py-4 text-center text-slate-500">
-                          No sessions recorded
-                        </td>
-                      </tr>
+                      <div className="w-full h-full flex items-center justify-center text-xs text-slate-500 text-center">
+                        No session data
+                      </div>
                     )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                    {modalTotal > 0 && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-lg font-bold text-slate-100">{modalPercentage}%</span>
+                        <span className="text-[10px] text-slate-400 uppercase tracking-wider">Attendance</span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Legend */}
+                  <div className="flex items-center gap-4 mt-4">
+                    <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                      Attended: {modalAttended}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-rose-400 font-medium">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                      Missed: {modalMissed}
+                    </div>
+                  </div>
+                </div>
 
-            {/* Advisory Recommendation Box */}
-            <div
-              className={`p-3.5 rounded-2xl border text-xs flex items-start gap-3 ${
-                modalIsEligible
-                  ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-300'
-                  : 'bg-rose-950/20 border-rose-900/40 text-rose-300'
-              }`}
-            >
-              {modalIsEligible ? (
-                <>
-                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-emerald-200">Clearance Confirmed:</span>{' '}
-                    This student has satisfied the statutory 80% attendance rule and is authorized to sit for all final assessments and exams.
+                {/* Advisory Recommendation Box */}
+                <div
+                  className={`p-4 rounded-xl border text-xs flex items-start gap-3 flex-1 ${
+                    modalIsEligible
+                      ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-300'
+                      : 'bg-rose-950/20 border-rose-900/40 text-rose-300'
+                  }`}
+                >
+                  {modalIsEligible ? (
+                    <>
+                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold text-emerald-200">Clearance Confirmed:</span>{' '}
+                        This student has satisfied the statutory 80% attendance rule and is authorized to sit for all final assessments and exams.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold text-rose-200">Attendance Deficit Alert:</span>{' '}
+                        This student has fallen below the mandatory 80% attendance threshold. An official warning notice or makeup session evaluation is recommended before exam slip issuance.
+                      </div>
+                    </>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Right Column (7 cols) */}
+              <div className="md:col-span-7 flex flex-col space-y-6">
+                
+                {/* Status and Metric Cards */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-slate-400 uppercase">Examination Status</span>
+                    {modalIsEligible ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-700/50">
+                        <ShieldCheck className="w-4 h-4" /> Exam Approved
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-950/80 text-rose-400 border border-rose-700/50">
+                        <AlertTriangle className="w-4 h-4" /> Disqualified (&lt;80%)
+                      </span>
+                    )}
                   </div>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-rose-200">Attendance Deficit Alert:</span>{' '}
-                    This student has fallen below the mandatory 80% attendance threshold. An official warning notice or makeup session evaluation is recommended before exam slip issuance.
+
+                  {/* Metric Grid */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+                    <div className="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl">
+                      <p className="text-[10px] text-slate-400 uppercase font-semibold">Conducted</p>
+                      <p className="text-sm font-bold text-slate-100">{modalTotal}</p>
+                    </div>
+                    <div className="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl">
+                      <p className="text-[10px] text-emerald-400 uppercase font-semibold">Attended</p>
+                      <p className="text-sm font-bold text-emerald-400">{modalAttended}</p>
+                    </div>
+                    <div className="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl">
+                      <p className="text-[10px] text-rose-400 uppercase font-semibold">Missed</p>
+                      <p className="text-sm font-bold text-rose-400">{modalMissed}</p>
+                    </div>
+                    <div className="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl">
+                      <p className="text-[10px] text-indigo-400 uppercase font-semibold">Threshold</p>
+                      <p
+                        className={`text-sm font-bold font-mono ${
+                          Number(modalDeltaThreshold) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                        }`}
+                      >
+                        {Number(modalDeltaThreshold) >= 0 ? `+${modalDeltaThreshold}%` : `${modalDeltaThreshold}%`}
+                      </p>
+                    </div>
                   </div>
-                </>
-              )}
+                </div>
+
+                {/* Session Timeline Table */}
+                <div className="bg-slate-950/60 rounded-xl border border-slate-800 overflow-hidden flex flex-col flex-1">
+                  <div className="px-4 py-2.5 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
+                    <h4 className="text-xs font-semibold text-slate-300">Session Timeline</h4>
+                    <span className="text-[10px] text-slate-500 font-mono">Total: {modalTotal}</span>
+                  </div>
+                  <div className="max-h-[220px] overflow-y-auto custom-scrollbar">
+                    <table className="w-full text-left text-[11px]">
+                      <thead className="bg-slate-950/80 sticky top-0 border-b border-slate-800 text-slate-400">
+                        <tr>
+                          <th className="px-4 py-2 font-medium">Date</th>
+                          <th className="px-4 py-2 font-medium text-center">Time In</th>
+                          <th className="px-4 py-2 font-medium text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/50">
+                        {modalRes?.session_details?.length ? (
+                          modalRes.session_details.map((session, idx) => (
+                            <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
+                              <td className="px-4 py-2 text-slate-300 font-mono">{session.date}</td>
+                              <td className="px-4 py-2 text-center text-slate-400 font-mono">
+                                {session.time_in || '-'}
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                {session.status === 'Present' ? (
+                                  <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold bg-emerald-950/50 px-2 py-0.5 rounded text-[10px]">
+                                    <CheckCircle2 className="w-3 h-3" /> Present
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-rose-400 font-semibold bg-rose-950/50 px-2 py-0.5 rounded text-[10px]">
+                                    <XCircle className="w-3 h-3" /> Absent
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={3} className="px-4 py-4 text-center text-slate-500">
+                              No sessions recorded
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
             </div>
 
             {/* Modal Footer */}
