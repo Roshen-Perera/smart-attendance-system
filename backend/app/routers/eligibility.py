@@ -59,8 +59,9 @@ def calculate_eligibility(
         )
         .all()
     )
-    
-    attended_session_ids = {str(record.session_id) for record in attended_records}
+    # Create a mapping from session_id to marked_at timestamp
+    attended_records_map = {str(record.session_id): record.marked_at for record in attended_records}
+    attended_session_ids = set(attended_records_map.keys())
     attended_sessions = len(attended_session_ids)
 
     attended_dates = []
@@ -68,8 +69,14 @@ def calculate_eligibility(
 
     for session in sessions:
         date_str = session.session_date.strftime("%Y-%m-%d")
-        if str(session.id) in attended_session_ids:
-            attended_dates.append(date_str)
+        sess_id_str = str(session.id)
+        if sess_id_str in attended_session_ids:
+            marked_time = attended_records_map[sess_id_str]
+            if marked_time:
+                time_str = marked_time.strftime("%I:%M %p")
+                attended_dates.append(f"{date_str} @ {time_str}")
+            else:
+                attended_dates.append(date_str)
         else:
             missed_dates.append(date_str)
 
