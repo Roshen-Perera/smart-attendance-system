@@ -405,39 +405,51 @@ export const EligibilityPage: React.FC = () => {
                 </div>
               </div>
             </div>
-            {/* Attendance Dates Lists */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-950/40 rounded-xl border border-emerald-900/30 p-3.5">
-                <h4 className="text-xs font-semibold text-emerald-400 mb-2 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Sessions Attended
-                </h4>
-                <div className="flex flex-wrap gap-1.5 max-h-[80px] overflow-y-auto pr-1">
-                  {modalRes?.attended_dates?.length ? (
-                    modalRes.attended_dates.map((date) => (
-                      <span key={date} className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 text-[10px] border border-emerald-800/50">
-                        {date}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-[10px] text-slate-500">No sessions attended</span>
-                  )}
-                </div>
+            {/* Session Timeline Table */}
+            <div className="bg-slate-950/60 rounded-xl border border-slate-800 overflow-hidden flex flex-col">
+              <div className="px-4 py-2.5 bg-slate-900/80 border-b border-slate-800 flex items-center justify-between">
+                <h4 className="text-xs font-semibold text-slate-300">Session Timeline</h4>
+                <span className="text-[10px] text-slate-500 font-mono">Total: {modalTotal}</span>
               </div>
-              <div className="bg-slate-950/40 rounded-xl border border-rose-900/30 p-3.5">
-                <h4 className="text-xs font-semibold text-rose-400 mb-2 flex items-center gap-1.5">
-                  <XCircle className="w-3.5 h-3.5" /> Sessions Missed
-                </h4>
-                <div className="flex flex-wrap gap-1.5 max-h-[80px] overflow-y-auto pr-1">
-                  {modalRes?.missed_dates?.length ? (
-                    modalRes.missed_dates.map((date) => (
-                      <span key={date} className="px-2 py-0.5 rounded-md bg-rose-950 text-rose-300 text-[10px] border border-rose-800/50">
-                        {date}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-[10px] text-slate-500">No sessions missed</span>
-                  )}
-                </div>
+              <div className="max-h-[140px] overflow-y-auto custom-scrollbar">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="bg-slate-950/80 sticky top-0 border-b border-slate-800 text-slate-400">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Date</th>
+                      <th className="px-4 py-2 font-medium text-center">Time In</th>
+                      <th className="px-4 py-2 font-medium text-right">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                    {modalRes?.session_details?.length ? (
+                      modalRes.session_details.map((session, idx) => (
+                        <tr key={idx} className="hover:bg-slate-800/30 transition-colors">
+                          <td className="px-4 py-2 text-slate-300 font-mono">{session.date}</td>
+                          <td className="px-4 py-2 text-center text-slate-400 font-mono">
+                            {session.time_in || '-'}
+                          </td>
+                          <td className="px-4 py-2 text-right">
+                            {session.status === 'Present' ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold bg-emerald-950/50 px-2 py-0.5 rounded text-[10px]">
+                                <CheckCircle2 className="w-3 h-3" /> Present
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-rose-400 font-semibold bg-rose-950/50 px-2 py-0.5 rounded text-[10px]">
+                                <XCircle className="w-3 h-3" /> Absent
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-4 text-center text-slate-500">
+                          No sessions recorded
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
