@@ -404,6 +404,44 @@ export const EligibilityPage: React.FC = () => {
                   </div>
                 </div>
               </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Attendance Dates Lists */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-slate-950/40 rounded-xl border border-emerald-900/30 p-3.5">
+                <h4 className="text-xs font-semibold text-emerald-400 mb-2 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Sessions Attended
+                </h4>
+                <div className="flex flex-wrap gap-1.5 max-h-[80px] overflow-y-auto pr-1">
+                  {modalRes?.attended_dates?.length ? (
+                    modalRes.attended_dates.map((date) => (
+                      <span key={date} className="px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 text-[10px] border border-emerald-800/50">
+                        {date}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] text-slate-500">No sessions attended</span>
+                  )}
+                </div>
+              </div>
+              <div className="bg-slate-950/40 rounded-xl border border-rose-900/30 p-3.5">
+                <h4 className="text-xs font-semibold text-rose-400 mb-2 flex items-center gap-1.5">
+                  <XCircle className="w-3.5 h-3.5" /> Sessions Missed
+                </h4>
+                <div className="flex flex-wrap gap-1.5 max-h-[80px] overflow-y-auto pr-1">
+                  {modalRes?.missed_dates?.length ? (
+                    modalRes.missed_dates.map((date) => (
+                      <span key={date} className="px-2 py-0.5 rounded-md bg-rose-950 text-rose-300 text-[10px] border border-rose-800/50">
+                        {date}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[10px] text-slate-500">No sessions missed</span>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Advisory Recommendation Box */}
