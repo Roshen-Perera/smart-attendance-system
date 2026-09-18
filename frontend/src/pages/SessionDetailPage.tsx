@@ -12,7 +12,6 @@ import {
   Sparkles,
   Maximize2,
   Minimize2,
-  Radio,
   Users,
   Scan,
   Loader2,
@@ -53,11 +52,9 @@ export const SessionDetailPage: React.FC = () => {
 
   // AI Recognition & Camera state
   const [isWebcamActive, setIsWebcamActive] = useState(false);
-  const [isAutoScan, setIsAutoScan] = useState(true); // Default to ON for automatic attendance
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [detectedFaceCount, setDetectedFaceCount] = useState(0);
   const [isDetectorReady, setIsDetectorReady] = useState(false);
-  const [isRecognizing, setIsRecognizing] = useState(false);
   const [scanStats, setScanStats] = useState<{ totalScans: number; newlyMarked: number }>({ totalScans: 0, newlyMarked: 0 });
   const [recentVerifications, setRecentVerifications] = useState<Array<{ name: string; reg: string; time: string; confidence: number }>>([]);
 
@@ -330,7 +327,6 @@ export const SessionDetailPage: React.FC = () => {
         videoRef.current.play().catch(() => {});
       }
       setIsWebcamActive(true);
-      setIsAutoScan(true); // Automatically enable auto attendance
       setScanStats({ totalScans: 0, newlyMarked: 0 });
       recognizedFacesMapRef.current.clear();
       trackedFacesRef.current = [];
@@ -385,12 +381,10 @@ export const SessionDetailPage: React.FC = () => {
   };
 
   // ─── Multi-Face Backend Recognition Handler ─────────────────────────────────
-  const processMultiFaceRecognition = useCallback(async (isAuto = true) => {
+  const processMultiFaceRecognition = useCallback(async () => {
     if (!sessionId || !isWebcamActive || isScanningRef.current) return;
 
     isScanningRef.current = true;
-    if (!isAuto) setIsRecognizing(true);
-
     try {
       const blob = await captureCurrentFrameBlob();
       if (!blob) return;
@@ -434,12 +428,6 @@ export const SessionDetailPage: React.FC = () => {
                   ...prev.slice(0, 5),
                 ]);
               }
-            } else if (faceInfo.status === 'already_marked') {
-              const lastSeen = recentDetectionsRef.current.get(reg) || 0;
-              if (now - lastSeen > 12000 && !isAuto) {
-                recentDetectionsRef.current.set(reg, now);
-                toast(`ℹ️ ${faceInfo.student_name} already marked present`, { icon: '✓' });
-              }
             }
           }
         });
@@ -448,22 +436,19 @@ export const SessionDetailPage: React.FC = () => {
           setScanStats((s) => ({ ...s, newlyMarked: s.newlyMarked + newMarkedInBatch }));
           loadSessionData(true);
         }
-      } else if (!isAuto) {
-        toast.error('No faces recognized in the frame');
       }
-    } catch (err: any) {
-      if (!isAuto) toast.error(err.response?.data?.detail || 'Recognition failed');
+    } catch (_) {
+      // background scan fail-safe
     } finally {
       isScanningRef.current = false;
-      if (!isAuto) setIsRecognizing(false);
     }
   }, [sessionId, isWebcamActive, loadSessionData]);
 
   // ─── Automatic Attendance Scan Interval (Every 1.8s) ────────────────────────
   useEffect(() => {
-    if (isAutoScan && isWebcamActive) {
+    if (isWebcamActive) {
       autoScanIntervalRef.current = setInterval(() => {
-        processMultiFaceRecognition(true);
+        processMultiFaceRecognition();
       }, 1800);
     } else {
       if (autoScanIntervalRef.current) {
@@ -474,9 +459,7 @@ export const SessionDetailPage: React.FC = () => {
     return () => {
       if (autoScanIntervalRef.current) clearInterval(autoScanIntervalRef.current);
     };
-  }, [isAutoScan, isWebcamActive, processMultiFaceRecognition]);
-
-  const handleManualScan = () => processMultiFaceRecognition(false);
+  }, [isWebcamActive, processMultiFaceRecognition]);
 
   const handleFileUploadRecognize = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || !e.target.files[0] || !sessionId) return;
@@ -612,7 +595,7 @@ export const SessionDetailPage: React.FC = () => {
                       {detectedFaceCount} {detectedFaceCount === 1 ? 'face' : 'faces'} tracked
                     </span>
                   )}
-                  {isWebcamActive && isAutoScan && (
+                  {isWebcamActive && (
                     <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px] font-semibold border border-emerald-500/30">
                       <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                       Auto-Marking Active
@@ -627,26 +610,13 @@ export const SessionDetailPage: React.FC = () => {
 
             <div className="flex items-center gap-2 flex-wrap justify-end">
               {isWebcamActive && (
-                <>
-                  <button
-                    onClick={() => setIsAutoScan((prev) => !prev)}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border ${
-                      isAutoScan
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-950/50'
-                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
-                    }`}
-                  >
-                    <Radio className={`w-3.5 h-3.5 ${isAutoScan ? 'text-emerald-400 animate-pulse' : ''}`} />
-                    <span>{isAutoScan ? 'Auto-Attendance: ON' : 'Auto-Attendance: OFF'}</span>
-                  </button>
-                  <button
-                    onClick={toggleFullscreen}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
-                    title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-                  >
-                    {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                  </button>
-                </>
+                <button
+                  onClick={toggleFullscreen}
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                  title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                >
+                  {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </button>
               )}
 
               {!isWebcamActive ? (
@@ -719,8 +689,8 @@ export const SessionDetailPage: React.FC = () => {
                   {/* Top status bar */}
                   <div className="absolute top-3 inset-x-3 flex items-center justify-between pointer-events-none">
                     <span className="px-2.5 py-1 rounded-lg bg-slate-950/85 backdrop-blur-md border border-slate-800/80 text-[11px] text-slate-300 font-medium flex items-center gap-1.5 shadow-lg">
-                      <span className={`w-2 h-2 rounded-full ${isAutoScan ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                      {isAutoScan ? `Auto-Marking Active ${detectedFaceCount > 0 ? `• ${detectedFaceCount} faces tracked` : ''}` : 'Manual Trigger Mode'}
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      Auto-Marking Active {detectedFaceCount > 0 ? `• ${detectedFaceCount} faces tracked` : ''}
                     </span>
                     <div className="flex items-center gap-2 pointer-events-auto">
                       {scanStats.newlyMarked > 0 && (
@@ -748,34 +718,18 @@ export const SessionDetailPage: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Bottom controls */}
-                  <div className="absolute bottom-4 inset-x-4 flex items-center justify-center gap-3">
-                    <button
-                      onClick={handleManualScan}
-                      disabled={isScanningRef.current}
-                      className="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-75 text-slate-950 font-bold text-xs rounded-full shadow-2xl flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
-                    >
-                      {isRecognizing ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-4 h-4" />
-                      )}
-                      <span>
-                        {detectedFaceCount > 1
-                          ? `Scan All ${detectedFaceCount} Faces Now`
-                          : 'Scan & Mark Attendance'}
-                      </span>
-                    </button>
-
-                    {isFullscreen && (
+                  {/* Fullscreen exit button */}
+                  {isFullscreen && (
+                    <div className="absolute bottom-4 inset-x-4 flex items-center justify-center">
                       <button
                         onClick={toggleFullscreen}
-                        className="px-4 py-2.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 font-semibold text-xs rounded-full backdrop-blur-md border border-slate-700 shadow-xl transition-all"
+                        className="px-5 py-2.5 bg-slate-900/90 hover:bg-slate-800 text-slate-200 font-semibold text-xs rounded-full backdrop-blur-md border border-slate-700 shadow-xl transition-all flex items-center gap-2"
                       >
-                        Exit Fullscreen
+                        <Minimize2 className="w-4 h-4" />
+                        <span>Exit Fullscreen</span>
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </>
               )}
             </div>
