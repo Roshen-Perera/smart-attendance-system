@@ -40,30 +40,42 @@ def calculate_eligibility(
             detail="Class not found"
         )
 
-    # Count total sessions
-    total_sessions = (
+    # Fetch all sessions for the class ordered by date
+    sessions = (
         db.query(models.Session)
         .filter(models.Session.class_id == class_id)
-        .count()
+        .order_by(models.Session.session_date.asc())
+        .all()
     )
+    total_sessions = len(sessions)
 
-    # Count attended sessions
-    attended_sessions = (
+    # Fetch attendance records for the student in this class
+    attended_records = (
         db.query(models.AttendanceRecord)
-        .join(
-            models.Session,
-            models.AttendanceRecord.session_id == models.Session.id
-        )
+        .join(models.Session, models.AttendanceRecord.session_id == models.Session.id)
         .filter(
             models.AttendanceRecord.student_id == student_id,
             models.Session.class_id == class_id
         )
-        .count()
+        .all()
     )
+    
+    attended_session_ids = {str(record.session_id) for record in attended_records}
+    attended_sessions = len(attended_session_ids)
+
+    attended_dates = []
+    missed_dates = []
+
+    for session in sessions:
+        date_str = session.session_date.strftime("%Y-%m-%d")
+        if str(session.id) in attended_session_ids:
+            attended_dates.append(date_str)
+        else:
+            missed_dates.append(date_str)
 
     # Calculate percentage
     if total_sessions == 0:
-        percentage = 0
+        percentage = 0.0
     else:
         percentage = (attended_sessions / total_sessions) * 100
 
@@ -79,5 +91,7 @@ def calculate_eligibility(
         "total_sessions": total_sessions,
         "attended_sessions": attended_sessions,
         "attendance_percentage": round(percentage, 2),
-        "status": status
+        "status": status,
+        "attended_dates": attended_dates,
+        "missed_dates": missed_dates
     }

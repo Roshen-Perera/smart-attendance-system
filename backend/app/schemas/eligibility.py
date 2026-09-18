@@ -8,3 +8,5 @@ class EligibilityOut(BaseModel):
     attended_sessions: int
     attendance_percentage: float
     status: str
+    attended_dates: list[str] = []
+    missed_dates: list[str] = []
