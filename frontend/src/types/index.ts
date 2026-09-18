@@ -150,6 +150,12 @@ export interface FaceEmbedding {
   created_at: string;
 }
 
+export interface SessionDetailItem {
+  date: string;
+  time_in: string | null;
+  status: string;
+}
+
 export interface EligibilityResult {
   student_id: string;
   class_id: string;
@@ -159,6 +165,7 @@ export interface EligibilityResult {
   status: 'Eligible' | 'Not Eligible';
   attended_dates?: string[];
   missed_dates?: string[];
+  session_details?: SessionDetailItem[];
 }
 
 export interface RecognitionResult {
