@@ -66,19 +66,22 @@ def calculate_eligibility(
 
     attended_dates = []
     missed_dates = []
+    session_details = []
 
     for session in sessions:
         date_str = session.session_date.strftime("%Y-%m-%d")
         sess_id_str = str(session.id)
         if sess_id_str in attended_session_ids:
             marked_time = attended_records_map[sess_id_str]
+            time_str = marked_time.strftime("%I:%M %p") if marked_time else "-"
             if marked_time:
-                time_str = marked_time.strftime("%I:%M %p")
                 attended_dates.append(f"{date_str} @ {time_str}")
             else:
                 attended_dates.append(date_str)
+            session_details.append({"date": date_str, "time_in": time_str, "status": "Present"})
         else:
             missed_dates.append(date_str)
+            session_details.append({"date": date_str, "time_in": "-", "status": "Absent"})
 
     # Calculate percentage
     if total_sessions == 0:
@@ -100,5 +103,6 @@ def calculate_eligibility(
         "attendance_percentage": round(percentage, 2),
         "status": status,
         "attended_dates": attended_dates,
-        "missed_dates": missed_dates
+        "missed_dates": missed_dates,
+        "session_details": session_details
     }
