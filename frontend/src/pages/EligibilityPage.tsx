@@ -404,10 +404,7 @@ export const EligibilityPage: React.FC = () => {
                   </div>
                 </div>
               </div>
-                </div>
-              </div>
             </div>
-
             {/* Attendance Dates Lists */}
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-950/40 rounded-xl border border-emerald-900/30 p-3.5">
