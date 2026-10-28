@@ -57,7 +57,13 @@ export const DashboardPage: React.FC = () => {
           activeSessionsCount: activeSess,
         });
 
-        setRecentAttendance(attendanceRecords);
+        const studentMap = new Map(students.map((s) => [s.id, s]));
+        const enrichedRecords = attendanceRecords.map((r) => ({
+          ...r,
+          student: r.student || studentMap.get(r.student_id),
+        }));
+
+        setRecentAttendance(enrichedRecords);
       } catch (err) {
         console.error('Failed to load dashboard stats', err);
       } finally {
@@ -166,16 +172,23 @@ export const DashboardPage: React.FC = () => {
               {recentAttendance.map((rec) => (
                 <div key={rec.id} className="py-3 flex items-center justify-between text-sm">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-950 text-emerald-400 border border-emerald-800/50 flex items-center justify-center">
-                      <CheckCircle2 className="w-4 h-4" />
+                    <div className="w-9 h-9 rounded-xl bg-indigo-950 text-indigo-400 border border-indigo-800/50 flex items-center justify-center font-bold text-xs flex-shrink-0">
+                      {rec.student?.name ? rec.student.name.charAt(0) : <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
                     </div>
-                    <div>
-                      <p className="font-medium text-slate-200">
-                        {rec.student?.name || `Student ID: ${rec.student_id.slice(0, 8)}`}
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-200 truncate">
+                        {rec.student?.name || 'Enrolled Student'}
                       </p>
-                      <p className="text-xs text-slate-400">
-                        {rec.student?.reg_number || 'Marked present'}
-                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-mono text-indigo-400 font-medium">
+                          {rec.student?.reg_number || 'Marked Present'}
+                        </span>
+                        {rec.student?.programme && (
+                          <span className="text-[11px] text-slate-400 truncate max-w-[220px]">
+                            • {rec.student.programme}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="text-right">

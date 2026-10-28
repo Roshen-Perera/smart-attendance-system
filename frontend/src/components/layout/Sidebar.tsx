@@ -37,9 +37,9 @@ export const Sidebar: React.FC = () => {
         <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
           <Camera className="w-5 h-5 text-white" />
         </div>
-        <div>
-          <h1 className="font-bold text-slate-100 text-sm tracking-wide">SmartAttendance</h1>
-          <p className="text-[10px] text-indigo-400 font-medium tracking-wider uppercase">AI Recognition Portal</p>
+        <div className="min-w-0">
+          <h1 className="font-bold text-slate-100 text-xs tracking-wide leading-tight truncate">Smart Attendance System</h1>
+          <p className="text-[10px] text-indigo-400 font-medium tracking-wider uppercase truncate">Deep Learning & Eligibility</p>
         </div>
       </div>
 

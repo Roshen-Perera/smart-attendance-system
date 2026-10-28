@@ -36,9 +36,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AI Smart Attendance API",
+    title="Smart Attendance System API",
     version="1.0.0",
-    description="FastAPI Backend for AI-powered Smart Attendance System using Face Recognition",
+    description="Backend API for Smart Attendance System Using Deep Learning based Facial Recognition with Exam Eligibility Prediction",
     lifespan=lifespan
 )
 
@@ -83,7 +83,8 @@ app.include_router(reports.router)
 @app.get("/")
 def root():
     return {
-        "message": "AI Smart Attendance API is running",
+        "message": "Smart Attendance System API is running",
+        "title": "Smart Attendance System Using Deep Learning based Facial Recognition with Exam Eligibility Prediction",
         "docs": "/docs",
         "status": "healthy"
     }

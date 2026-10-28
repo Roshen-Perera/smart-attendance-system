@@ -48,8 +48,8 @@ export const LoginPage: React.FC = () => {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 shadow-xl shadow-indigo-500/25 mb-2">
             <Camera className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Smart Attendance</h1>
-          <p className="text-xs text-slate-400">Sign in with your university admin or lecturer account</p>
+          <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Smart Attendance System</h1>
+          <p className="text-xs text-indigo-400/90 font-medium">Deep Learning Facial Recognition & Exam Eligibility</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
@@ -103,8 +103,8 @@ export const LoginPage: React.FC = () => {
           </button>
         </form>
 
-        <div className="text-center text-xs text-slate-500 pt-2 border-t border-slate-800/80">
-          AI-Powered Smart Attendance & Recognition System
+        <div className="text-center text-[11px] text-slate-400 pt-2 border-t border-slate-800/80 leading-relaxed">
+          Deep Learning based Facial Recognition with Exam Eligibility Prediction
         </div>
       </div>
     </div>

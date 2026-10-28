@@ -61,7 +61,13 @@ def get_attendance(
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
-    return db.query(models.AttendanceRecord).offset(skip).limit(limit).all()
+    return (
+        db.query(models.AttendanceRecord)
+        .order_by(models.AttendanceRecord.marked_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/session/{session_id}", response_model=list[schemas.AttendanceOut])

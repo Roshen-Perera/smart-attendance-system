@@ -17,6 +17,7 @@ class AttendanceOut(BaseModel):
     student_id: UUID
     marked_at: datetime
     confidence_score: Optional[float]
+    student: Optional[StudentOut] = None
 
     model_config = {
         "from_attributes": True
