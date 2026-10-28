@@ -27,10 +27,18 @@ def create_lecturer(
     if not name_val:
         raise HTTPException(status_code=422, detail="Name is required")
 
+    linked_user = None
+    if payload.user_id:
+        linked_user = db.get(models.User, payload.user_id)
+    if not linked_user:
+        linked_user = db.query(models.User).filter(models.User.email == payload.email).first()
+
     lecturer = models.Lecturer(
         full_name=name_val,
         email=payload.email,
-        department=payload.department
+        department=payload.department,
+        employee_id=payload.employee_id,
+        user_id=linked_user.id if linked_user else None
     )
     db.add(lecturer)
     db.commit()
@@ -73,7 +81,6 @@ def update_lecturer(
         lecturer.full_name = name_val
     if "full_name" in data:
         lecturer.full_name = data.pop("full_name")
-    data.pop("employee_id", None)
 
     for key, value in data.items():
         setattr(lecturer, key, value)

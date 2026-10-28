@@ -166,6 +166,67 @@ export interface EligibilityResult {
   attended_dates?: string[];
   missed_dates?: string[];
   session_details?: SessionDetailItem[];
+
+  // Predictive fields
+  planned_semester_sessions?: number;
+  remaining_sessions?: number;
+  max_attainable_percentage?: number;
+  projected_final_percentage?: number;
+  sessions_needed_for_eligibility?: number;
+  allowed_absences_remaining?: number;
+  risk_level?: 'SAFE' | 'MODERATE_RISK' | 'HIGH_RISK' | 'CRITICAL' | 'DISQUALIFIED';
+  risk_label?: string;
+  is_mathematically_disqualified?: boolean;
+  momentum?: 'improving' | 'declining' | 'stable';
+  prediction_summary?: string;
+}
+
+export interface PredictiveStudentItem {
+  student_id: string;
+  student_name: string;
+  reg_number: string;
+  email?: string | null;
+  total_held_sessions: number;
+  attended_sessions: number;
+  current_attendance_percentage: number;
+  current_status: string;
+
+  planned_semester_sessions: number;
+  remaining_sessions: number;
+  max_attainable_percentage: number;
+  projected_final_percentage: number;
+  sessions_needed_for_eligibility: number;
+  allowed_absences_remaining: number;
+  risk_level: 'SAFE' | 'MODERATE_RISK' | 'HIGH_RISK' | 'CRITICAL' | 'DISQUALIFIED';
+  risk_label: string;
+  is_mathematically_disqualified: boolean;
+  momentum: 'improving' | 'declining' | 'stable';
+  prediction_summary: string;
+  session_details?: SessionDetailItem[];
+}
+
+export interface ClassPredictiveAnalytics {
+  class_id: string;
+  course_code: string;
+  course_name: string;
+  planned_semester_sessions: number;
+  sessions_held_count: number;
+  remaining_sessions_count: number;
+  total_students: number;
+  projected_eligible_count: number;
+  at_risk_count: number;
+  critical_count: number;
+  disqualified_count: number;
+  average_current_percentage: number;
+  average_projected_percentage: number;
+  risk_distribution: {
+    SAFE: number;
+    MODERATE_RISK: number;
+    HIGH_RISK: number;
+    CRITICAL: number;
+    DISQUALIFIED: number;
+  };
+  students: PredictiveStudentItem[];
 }
 
 export interface RecognitionResult {

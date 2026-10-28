@@ -39,6 +39,7 @@ interface TrackedFace {
   regNumber?: string;
   confidence?: number;
   isVerified?: boolean;
+  isUnrecognized?: boolean;
 }
 
 export const SessionDetailPage: React.FC = () => {
@@ -68,7 +69,7 @@ export const SessionDetailPage: React.FC = () => {
   const recentDetectionsRef = useRef<Map<string, number>>(new Map()); // student reg -> last marked timestamp
   const faceDetectorRef = useRef<MPFaceDetector | null>(null);
   const trackedFacesRef = useRef<TrackedFace[]>([]);
-  const recognizedFacesMapRef = useRef<Map<number, { name: string; reg: string; conf: number }>>(new Map());
+  const recognizedFacesMapRef = useRef<Map<number, { name: string; reg: string; conf: number; isUnrecognized?: boolean }>>(new Map());
 
   // Manual & Correction modal state
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -156,11 +157,11 @@ export const SessionDetailPage: React.FC = () => {
   }, []);
 
   // ─── Real-time Canvas Face Tracking Overlay (60 FPS Render Loop) ─────────────
-  const renderTrackingOverlay = useCallback(() => {
+  const renderTrackingOverlay = useCallback(function loop() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!canvas || !video || !video.videoWidth || video.readyState < 2) {
-      animFrameRef.current = requestAnimationFrame(renderTrackingOverlay);
+      animFrameRef.current = requestAnimationFrame(loop);
       return;
     }
 
@@ -173,7 +174,7 @@ export const SessionDetailPage: React.FC = () => {
 
     const ctx = canvas.getContext('2d');
     if (!ctx) {
-      animFrameRef.current = requestAnimationFrame(renderTrackingOverlay);
+      animFrameRef.current = requestAnimationFrame(loop);
       return;
     }
 
@@ -204,7 +205,8 @@ export const SessionDetailPage: React.FC = () => {
               studentName: recInfo?.name,
               regNumber: recInfo?.reg,
               confidence: recInfo?.conf,
-              isVerified: !!recInfo,
+              isVerified: !!recInfo && !recInfo.isUnrecognized,
+              isUnrecognized: recInfo?.isUnrecognized,
             };
           });
 
@@ -222,11 +224,11 @@ export const SessionDetailPage: React.FC = () => {
     // Draw high-tech dynamic bounding box for EACH tracked face
     const faces = trackedFacesRef.current;
     faces.forEach((face) => {
-      const { x, y, w, h, isVerified, studentName, regNumber, confidence, id } = face;
+      const { x, y, w, h, isVerified, isUnrecognized, studentName, regNumber, confidence, id } = face;
       if (w <= 0 || h <= 0) return;
 
-      const primaryColor = isVerified ? '#10b981' : '#06b6d4'; // emerald if verified, electric cyan if tracking
-      const glowColor = isVerified ? 'rgba(16, 185, 129, 0.4)' : 'rgba(6, 182, 212, 0.3)';
+      const primaryColor = isVerified ? '#10b981' : isUnrecognized ? '#f59e0b' : '#06b6d4'; // emerald if verified, amber if unrecognized, cyan if scanning
+      const glowColor = isVerified ? 'rgba(16, 185, 129, 0.4)' : isUnrecognized ? 'rgba(245, 158, 11, 0.4)' : 'rgba(6, 182, 212, 0.3)';
 
       // 1. Subtle glowing bounding box
       ctx.strokeStyle = primaryColor;
@@ -239,7 +241,7 @@ export const SessionDetailPage: React.FC = () => {
       // 2. Futuristic Corner Brackets (surveillance style)
       const cornerLen = Math.min(20, w * 0.25, h * 0.25);
       ctx.lineWidth = 3.5;
-      ctx.strokeStyle = isVerified ? '#34d399' : '#38bdf8';
+      ctx.strokeStyle = isVerified ? '#34d399' : isUnrecognized ? '#fbbf24' : '#38bdf8';
 
       // Top-Left
       ctx.beginPath();
@@ -272,7 +274,9 @@ export const SessionDetailPage: React.FC = () => {
       // 3. Floating HUD Badge above face box
       const badgeText = isVerified
         ? `✓ ${studentName || 'Verified'} (${regNumber || ''}) • ${confidence || 95}%`
-        : `● Face #${id} · Tracking`;
+        : isUnrecognized
+        ? `⚠ Unknown Face (${confidence || 0}%)`
+        : `● Face #${id} · Scanning...`;
 
       ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
       const textMetrics = ctx.measureText(badgeText);
@@ -282,8 +286,8 @@ export const SessionDetailPage: React.FC = () => {
       const badgeY = Math.max(badgeH + 4, y - 6);
 
       // Badge background
-      ctx.fillStyle = isVerified ? 'rgba(6, 78, 59, 0.92)' : 'rgba(15, 23, 42, 0.88)';
-      ctx.strokeStyle = isVerified ? '#059669' : '#0284c7';
+      ctx.fillStyle = isVerified ? 'rgba(6, 78, 59, 0.92)' : isUnrecognized ? 'rgba(120, 53, 15, 0.92)' : 'rgba(15, 23, 42, 0.88)';
+      ctx.strokeStyle = isVerified ? '#059669' : isUnrecognized ? '#d97706' : '#0284c7';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.roundRect(badgeX, badgeY - badgeH, badgeW, badgeH, 6);
@@ -291,11 +295,11 @@ export const SessionDetailPage: React.FC = () => {
       ctx.stroke();
 
       // Badge text
-      ctx.fillStyle = isVerified ? '#a7f3d0' : '#e0f2fe';
+      ctx.fillStyle = isVerified ? '#a7f3d0' : isUnrecognized ? '#fef3c7' : '#e0f2fe';
       ctx.fillText(badgeText, badgeX + 8, badgeY - 7);
     });
 
-    animFrameRef.current = requestAnimationFrame(renderTrackingOverlay);
+    animFrameRef.current = requestAnimationFrame(loop);
   }, []);
 
   // Start / stop render loop
@@ -396,8 +400,19 @@ export const SessionDetailPage: React.FC = () => {
         let newMarkedInBatch = 0;
         const now = Date.now();
 
+        // Refresh mapping so previous detections do not stick to new/unknown faces
+        recognizedFacesMapRef.current.clear();
+
         res.faces.forEach((faceInfo: MultiFaceInfo, idx: number) => {
-          if (faceInfo.student_name && faceInfo.student_reg_number) {
+          if (faceInfo.status === 'unrecognized') {
+            const conf = Math.round((faceInfo.confidence_score || 0) * 100);
+            recognizedFacesMapRef.current.set(idx, {
+              name: 'Unknown Face',
+              reg: 'Not Enrolled',
+              conf: conf,
+              isUnrecognized: true,
+            });
+          } else if (faceInfo.student_name && faceInfo.student_reg_number) {
             const conf = Math.round((faceInfo.confidence_score || 0) * 100);
             const reg = faceInfo.student_reg_number;
 
@@ -406,6 +421,7 @@ export const SessionDetailPage: React.FC = () => {
               name: faceInfo.student_name,
               reg: reg,
               conf: conf,
+              isUnrecognized: false,
             });
 
             // Check if newly marked or already marked

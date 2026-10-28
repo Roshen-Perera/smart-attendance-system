@@ -28,7 +28,7 @@ export const EnrollmentsPage: React.FC = () => {
         classesApi.getById(classId),
         classesApi.getStudents(classId),
         studentsApi.getAll(0, 100),
-        enrollmentsApi.getAll(0, 100),
+        enrollmentsApi.getAll(classId, undefined, 0, 500),
       ]);
       setClassDetail(cls);
       setEnrolledStudents(studentsInClass);

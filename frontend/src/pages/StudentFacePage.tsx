@@ -13,6 +13,7 @@ import {
   Check,
 } from 'lucide-react';
 import { facesApi } from '../api/endpoints';
+import { API_BASE_URL } from '../api/axios';
 import type { FaceImage, FaceEmbedding } from '../types';
 import toast from 'react-hot-toast';
 
@@ -51,6 +52,34 @@ export const StudentFacePage: React.FC = () => {
     }
   };
 
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const startCamera = async () => {
+    try {
+      setCapturedBlob(null);
+      setCapturedPreview(null);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsCameraActive(true);
+    } catch {
+      toast.error('Camera access denied or webcam unavailable');
+    }
+  };
+
   useEffect(() => {
     loadStudentData();
   }, [decodedRegNumber]);
@@ -68,34 +97,6 @@ export const StudentFacePage: React.FC = () => {
       stopCamera();
     }
     setActiveTab(tab);
-  };
-
-  const startCamera = async () => {
-    try {
-      setCapturedBlob(null);
-      setCapturedPreview(null);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-      setIsCameraActive(true);
-    } catch (err) {
-      toast.error('Camera access denied or webcam unavailable');
-    }
-  };
-
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setIsCameraActive(false);
   };
 
   const handleCapturePhoto = () => {
@@ -193,6 +194,16 @@ export const StudentFacePage: React.FC = () => {
       loadStudentData();
     } catch (err: any) {
       toast.error(err.response?.data?.detail || 'Failed to delete embedding');
+    }
+  };
+
+  const handleDeleteImage = async (id: string) => {
+    try {
+      await facesApi.deleteImage(id);
+      toast.success('Face photo deleted');
+      loadStudentData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to delete face photo');
     }
   };
 
@@ -499,16 +510,25 @@ export const StudentFacePage: React.FC = () => {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {images.map((img) => (
-              <div key={img.id} className="bg-slate-950 border border-slate-800 rounded-xl p-2 space-y-2">
+              <div key={img.id} className="bg-slate-950 border border-slate-800 rounded-xl p-2 space-y-2 relative group">
                 <img
-                  src={`http://localhost:8000/${img.image_path}`}
+                  src={`${API_BASE_URL}/${img.image_path}`}
                   alt="Face"
                   className="w-full h-36 object-cover rounded-lg"
                   onError={(e) => {
                     (e.target as HTMLElement).style.display = 'none';
                   }}
                 />
-                <p className="text-[10px] text-slate-500 font-mono text-center truncate">{img.image_path}</p>
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-[10px] text-slate-500 font-mono text-center truncate">{img.image_path.split('/').pop()}</p>
+                  <button
+                    onClick={() => handleDeleteImage(img.id)}
+                    className="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-950/40 transition-colors"
+                    title="Delete Photo"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

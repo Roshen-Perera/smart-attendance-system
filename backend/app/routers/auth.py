@@ -37,6 +37,21 @@ def register_user(
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Link or auto-create corresponding Lecturer profile if role is lecturer
+    existing_lecturer = db.query(models.Lecturer).filter(models.Lecturer.email == user.email).first()
+    if existing_lecturer:
+        existing_lecturer.user_id = user.id
+        db.commit()
+    elif user.role == "lecturer":
+        lecturer = models.Lecturer(
+            full_name=user.full_name,
+            email=user.email,
+            user_id=user.id
+        )
+        db.add(lecturer)
+        db.commit()
+
     logger.info(f"User registered: {user.email} (role: {user.role})")
     return user
 

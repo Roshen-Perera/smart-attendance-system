@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    UniqueConstraint,
 )
 
 from sqlalchemy.orm import relationship
@@ -21,6 +22,9 @@ def gen_uuid():
 
 class AttendanceRecord(Base):
     __tablename__ = "attendance_records"
+    __table_args__ = (
+        UniqueConstraint("session_id", "student_id", name="uq_session_student_attendance"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 

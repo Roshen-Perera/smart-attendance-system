@@ -5,5 +5,5 @@ from .class_course import ClassCreate, ClassUpdate, ClassOut
 from .enrollment import EnrollmentCreate, EnrollmentUpdate, EnrollmentOut
 from .session import SessionCreate, SessionUpdate, SessionOut
 from .attendance import AttendanceCreate, AttendanceOut
-from .eligibility import EligibilityOut
+from .eligibility import EligibilityOut, ClassPredictiveAnalyticsOut, PredictiveStudentItem
 from .embedding import FaceEmbeddingOut

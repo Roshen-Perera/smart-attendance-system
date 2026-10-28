@@ -28,6 +28,11 @@ class Session(Base):
         nullable=False
     )
 
+    topic = Column(
+        String,
+        nullable=True
+    )
+
     is_active = Column(
         Boolean,
         default=True,

@@ -1,3 +1,4 @@
+import numpy as np
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -38,37 +39,49 @@ def generate_embedding(
             detail="Student not found"
         )
 
-    face_image = (
+    face_images = (
         db.query(models.FaceImage)
-        .filter(
-            models.FaceImage.student_id == student.id
-        )
-        .first()
+        .filter(models.FaceImage.student_id == student.id)
+        .all()
     )
 
-    if not face_image:
+    if not face_images:
         raise HTTPException(
             status_code=400,
             detail="No face image found for this student. Please upload a face image first."
         )
 
-    embedding = face_service.get_embedding(face_image.image_path)
+    valid_embeddings = []
+    for img in face_images:
+        emb = face_service.get_embedding(img.image_path)
+        if emb:
+            valid_embeddings.append(emb)
 
-    if not embedding:
+    if not valid_embeddings:
         raise HTTPException(
             status_code=400,
-            detail="No face detected in the stored image"
+            detail="No face detected in any of the student's stored images"
         )
+
+    # Compute high-accuracy aggregate unit embedding across all available student photos
+    avg_emb = np.mean(valid_embeddings, axis=0)
+    norm = np.linalg.norm(avg_emb)
+    if norm > 0:
+        avg_emb = avg_emb / norm
+    final_embedding = avg_emb.tolist()
+
+    # Clear prior embeddings for this student to keep templates fresh and clean
+    db.query(models.FaceEmbedding).filter(models.FaceEmbedding.student_id == student.id).delete()
 
     face_embedding = models.FaceEmbedding(
         student_id=student.id,
-        embedding=embedding
+        embedding=final_embedding
     )
 
     db.add(face_embedding)
     db.commit()
     db.refresh(face_embedding)
-    logger.info(f"Face embedding generated for student {reg_number} by user {current_user.email}")
+    logger.info(f"Face embedding generated for student {reg_number} from {len(valid_embeddings)} photo(s) by user {current_user.email}")
 
     return face_embedding
 

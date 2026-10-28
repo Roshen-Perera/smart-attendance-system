@@ -1,3 +1,4 @@
+from uuid import UUID
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -26,14 +27,22 @@ def get_current_user(
             detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user_id: str = payload.get("sub")
-    if user_id is None:
+    user_id_raw: str = payload.get("sub")
+    if user_id_raw is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user = db.get(models.User, user_id)
+    try:
+        user_uuid = UUID(user_id_raw)
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user ID format in token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user = db.get(models.User, user_uuid)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

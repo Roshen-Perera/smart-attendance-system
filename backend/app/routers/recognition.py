@@ -3,6 +3,7 @@ import uuid
 from typing import Optional
 from uuid import UUID
 
+import numpy as np
 from fastapi import (
     APIRouter,
     UploadFile,
@@ -23,7 +24,7 @@ router = APIRouter(
 )
 
 TEMP_DIR = "uploads/temp"
-SIMILARITY_THRESHOLD = 0.50  # Cosine similarity threshold for ArcFace match (0.0 to 1.0)
+SIMILARITY_THRESHOLD = float(os.getenv("FACE_SIMILARITY_THRESHOLD", "0.65"))  # Recommended ArcFace threshold (0.65+) to eliminate false positives
 
 
 @router.post("/recognize")
@@ -89,14 +90,17 @@ async def recognize_face(
             .all()
         )
 
-        best_student_id = None
-        best_confidence = -1.0
+        if not stored_embeddings:
+            logger.info(f"Recognition attempt for session {session_id}: No face embeddings enrolled for this class")
+            return {
+                "message": "No face biometric templates registered for students in this class"
+            }
 
-        for stored in stored_embeddings:
-            score = face_service.compute_similarity(stored.embedding, unknown_embedding)
-            if score > best_confidence:
-                best_confidence = score
-                best_student_id = stored.student_id
+        stored_matrix = np.array([s.embedding for s in stored_embeddings], dtype=np.float32)
+        scores = face_service.compute_batch_similarities(stored_matrix, unknown_embedding)
+        best_idx = int(np.argmax(scores))
+        best_confidence = round(float(scores[best_idx]), 4)
+        best_student_id = stored_embeddings[best_idx].student_id
 
         # Check if best match satisfies threshold
         if best_student_id is not None and best_confidence >= SIMILARITY_THRESHOLD:
@@ -219,6 +223,17 @@ async def recognize_multiple_faces(
             .all()
         )
 
+        if not stored_embeddings:
+            return {
+                "total_faces": len(faces_data),
+                "recognized_count": 0,
+                "newly_marked_count": 0,
+                "faces": [{"bbox": f["bbox"], "status": "unrecognized", "confidence_score": 0.0} for f in faces_data],
+                "message": "No face biometric templates registered for students in this class"
+            }
+
+        stored_matrix = np.array([s.embedding for s in stored_embeddings], dtype=np.float32)
+
         # Get all existing attendance records for this session
         existing_records = (
             db.query(models.AttendanceRecord.student_id)
@@ -236,20 +251,17 @@ async def recognize_multiple_faces(
         results = []
         newly_marked_count = 0
         recognized_count = 0
+        new_attendance_records = []
 
         for face_info in faces_data:
             unknown_emb = face_info["embedding"]
             bbox = face_info["bbox"]
             det_score = face_info["det_score"]
 
-            best_student_id = None
-            best_confidence = -1.0
-
-            for stored in stored_embeddings:
-                score = face_service.compute_similarity(stored.embedding, unknown_emb)
-                if score > best_confidence:
-                    best_confidence = score
-                    best_student_id = stored.student_id
+            scores = face_service.compute_batch_similarities(stored_matrix, unknown_emb)
+            best_idx = int(np.argmax(scores))
+            best_confidence = round(float(scores[best_idx]), 4)
+            best_student_id = stored_embeddings[best_idx].student_id
 
             if best_student_id is not None and best_confidence >= SIMILARITY_THRESHOLD:
                 student = students_map.get(best_student_id)
@@ -266,21 +278,16 @@ async def recognize_multiple_faces(
                         "confidence_score": best_confidence
                     })
                 else:
-                    # Mark attendance in database
+                    # Stage attendance record for batch commit
                     attendance = models.AttendanceRecord(
                         student_id=best_student_id,
                         session_id=session_id,
                         confidence_score=best_confidence
                     )
                     db.add(attendance)
-                    db.commit()
-                    db.refresh(attendance)
+                    new_attendance_records.append(attendance)
                     already_marked_ids.add(best_student_id)
                     newly_marked_count += 1
-
-                    logger.info(
-                        f"Attendance marked via AI Multi-Scan: student={student.reg_number if student else best_student_id}, session={session_id}, confidence={best_confidence}"
-                    )
 
                     results.append({
                         "bbox": bbox,
@@ -290,15 +297,33 @@ async def recognize_multiple_faces(
                         "student_name": student.name if student else None,
                         "student_reg_number": student.reg_number if student else None,
                         "confidence_score": best_confidence,
-                        "attendance_id": str(attendance.id)
+                        "_record_ref": attendance
                     })
             else:
+                logger.info(
+                    f"Face unrecognized for session {session_id}: best confidence {best_confidence} is below threshold {SIMILARITY_THRESHOLD}"
+                )
                 results.append({
                     "bbox": bbox,
                     "det_score": det_score,
                     "status": "unrecognized",
                     "confidence_score": max(0.0, best_confidence)
                 })
+
+        # Batch commit any newly marked attendance records in a single database round-trip
+        if new_attendance_records:
+            db.commit()
+            for record in new_attendance_records:
+                db.refresh(record)
+                logger.info(
+                    f"Attendance marked via AI Multi-Scan: student={record.student_id}, session={session_id}, confidence={record.confidence_score}"
+                )
+
+        # Attach persisted attendance IDs to response
+        for item in results:
+            if "_record_ref" in item:
+                rec = item.pop("_record_ref")
+                item["attendance_id"] = str(rec.id)
 
         return {
             "total_faces": len(faces_data),

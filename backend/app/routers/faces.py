@@ -151,3 +151,28 @@ def get_face_images(
     )
 
     return face_images
+
+
+@router.delete("/{image_id}", status_code=204)
+def delete_face_image(
+    image_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_lecturer)
+):
+    face_image = db.get(models.FaceImage, image_id)
+    if not face_image:
+        raise HTTPException(
+            status_code=404,
+            detail="Face image not found"
+        )
+
+    if face_image.image_path and os.path.exists(face_image.image_path):
+        try:
+            os.remove(face_image.image_path)
+        except OSError as e:
+            logger.warning(f"Failed to remove face image file {face_image.image_path}: {e}")
+
+    db.delete(face_image)
+    db.commit()
+    logger.info(f"Face image {image_id} deleted by user {current_user.email}")
+    return None

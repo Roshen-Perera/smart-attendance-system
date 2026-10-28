@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, model_validator
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 
@@ -10,10 +10,11 @@ class LecturerCreate(BaseModel):
     email: EmailStr
     department: Optional[str] = None
     employee_id: Optional[str] = None
+    user_id: Optional[UUID] = None
 
     @model_validator(mode="before")
     @classmethod
-    def resolve_name(cls, data: any):
+    def resolve_name(cls, data: Any):
         if isinstance(data, dict):
             val = data.get("name") or data.get("full_name")
             if val:
@@ -28,10 +29,11 @@ class LecturerUpdate(BaseModel):
     email: Optional[EmailStr] = None
     department: Optional[str] = None
     employee_id: Optional[str] = None
+    user_id: Optional[UUID] = None
 
     @model_validator(mode="before")
     @classmethod
-    def resolve_name(cls, data: any):
+    def resolve_name(cls, data: Any):
         if isinstance(data, dict):
             val = data.get("name") or data.get("full_name")
             if val:
@@ -46,11 +48,13 @@ class LecturerOut(BaseModel):
     name: Optional[str] = None
     email: EmailStr
     department: Optional[str] = None
+    employee_id: Optional[str] = None
+    user_id: Optional[UUID] = None
     created_at: datetime
 
     @model_validator(mode="before")
     @classmethod
-    def set_name_field(cls, data: any):
+    def set_name_field(cls, data: Any):
         if hasattr(data, "full_name"):
             name_val = getattr(data, "full_name")
             setattr(data, "name", name_val)

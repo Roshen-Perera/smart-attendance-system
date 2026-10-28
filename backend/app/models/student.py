@@ -35,6 +35,16 @@ class Student(Base):
         nullable=True
     )
 
+    phone = Column(
+        String,
+        nullable=True
+    )
+
+    programme = Column(
+        String,
+        nullable=True
+    )
+
     face_images = relationship(
         "FaceImage",
         back_populates="student",

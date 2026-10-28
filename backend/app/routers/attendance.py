@@ -120,9 +120,22 @@ def correct_attendance(
     if not student:
         raise HTTPException(404, "Student not found")
 
-    # pyrefly: ignore [bad-assignment]
+    existing = (
+        db.query(models.AttendanceRecord)
+        .filter(
+            models.AttendanceRecord.session_id == record.session_id,
+            models.AttendanceRecord.student_id == new_student_id,
+            models.AttendanceRecord.id != record.id
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="Student already has an attendance record for this session"
+        )
+
     record.student_id = new_student_id
-    # pyrefly: ignore [bad-assignment]
     record.confidence_score = None  # Manually corrected
     db.commit()
     db.refresh(record)

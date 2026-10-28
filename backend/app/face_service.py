@@ -9,16 +9,22 @@ class FaceService:
     _instance: Optional['FaceService'] = None
 
     def __init__(self):
-        logger.info("Initializing InsightFace FaceAnalysis app (buffalo_l)...")
-        # ctx_id=-1 for CPU, 0 for GPU
-        # providers can default to CPUExecutionProvider for universal compatibility
-        self.app = FaceAnalysis(
-            name="buffalo_l",
-            allowed_modules=['detection', 'recognition'],
-            providers=['CPUExecutionProvider']
-        )
-        self.app.prepare(ctx_id=-1, det_size=(640, 640))
-        logger.info("InsightFace FaceAnalysis app initialized successfully.")
+        self._app: Optional[FaceAnalysis] = None
+
+    @property
+    def app(self) -> FaceAnalysis:
+        if self._app is None:
+            logger.info("Initializing InsightFace FaceAnalysis app (buffalo_l)...")
+            # ctx_id=-1 for CPU, 0 for GPU
+            # providers can default to CPUExecutionProvider for universal compatibility
+            self._app = FaceAnalysis(
+                name="buffalo_l",
+                allowed_modules=['detection', 'recognition'],
+                providers=['CPUExecutionProvider']
+            )
+            self._app.prepare(ctx_id=-1, det_size=(640, 640))
+            logger.info("InsightFace FaceAnalysis app initialized successfully.")
+        return self._app
 
     @classmethod
     def get_instance(cls) -> 'FaceService':
@@ -117,6 +123,28 @@ class FaceService:
 
         similarity = float(np.dot(vec1, vec2) / (norm1 * norm2))
         return round(similarity, 4)
+
+    @staticmethod
+    def compute_batch_similarities(stored_matrix: np.ndarray, query_emb: Union[List[float], np.ndarray]) -> np.ndarray:
+        """
+        Compute cosine similarities of query_emb (shape: (512,)) against a 2D matrix of stored embeddings (shape: (N, 512)).
+        Returns a 1D numpy array of similarity scores of length N.
+        """
+        if stored_matrix.size == 0:
+            return np.array([], dtype=np.float32)
+
+        q_vec = np.array(query_emb, dtype=np.float32)
+        q_norm = np.linalg.norm(q_vec)
+        if q_norm == 0:
+            return np.zeros(stored_matrix.shape[0], dtype=np.float32)
+        q_vec = q_vec / q_norm
+
+        matrix_norms = np.linalg.norm(stored_matrix, axis=1, keepdims=True)
+        # Avoid division by zero
+        matrix_norms[matrix_norms == 0] = 1.0
+        normalized_matrix = stored_matrix / matrix_norms
+
+        return np.dot(normalized_matrix, q_vec)
 
 
 face_service = FaceService.get_instance()

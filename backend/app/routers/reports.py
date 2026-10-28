@@ -1,3 +1,4 @@
+from collections import Counter
 import csv
 import io
 from fastapi import APIRouter, Depends, HTTPException
@@ -150,21 +151,31 @@ def get_class_analytics(
 
     total_sessions_count = len(sessions)
     total_students = len(enrollments)
+    session_ids = [sess.id for sess in sessions]
+
+    # Pre-fetch all attendance records for this class in a single batch query (O(1) database queries)
+    all_records = []
+    if session_ids:
+        all_records = (
+            db.query(models.AttendanceRecord.session_id, models.AttendanceRecord.student_id)
+            .filter(models.AttendanceRecord.session_id.in_(session_ids))
+            .all()
+        )
+
+    attendance_by_session = Counter(r[0] for r in all_records)
+    attendance_by_student = Counter(r[1] for r in all_records)
 
     # 1. Trend data: attendance per session
     trend_data = []
     for sess in sessions:
-        attended_count = (
-            db.query(models.AttendanceRecord)
-            .filter(models.AttendanceRecord.session_id == sess.id)
-            .count()
-        )
+        attended_count = attendance_by_session.get(sess.id, 0)
+        session_label = sess.topic if sess.topic else f"Session on {sess.session_date.strftime('%Y-%m-%d')}"
         trend_data.append({
             "session_id": str(sess.id),
             "session_date": sess.session_date.isoformat(),
-            "topic": f"Session on {sess.session_date.strftime('%Y-%m-%d')}",
+            "topic": session_label,
             "attended": attended_count,
-            "absent": total_students - attended_count
+            "absent": max(0, total_students - attended_count)
         })
 
     # 2. Eligibility distribution
@@ -173,16 +184,7 @@ def get_class_analytics(
 
     if total_sessions_count > 0:
         for enrollment in enrollments:
-            student_id = enrollment.student_id
-            attended_count = (
-                db.query(models.AttendanceRecord)
-                .join(models.Session, models.AttendanceRecord.session_id == models.Session.id)
-                .filter(
-                    models.AttendanceRecord.student_id == student_id,
-                    models.Session.class_id == class_id
-                )
-                .count()
-            )
+            attended_count = attendance_by_student.get(enrollment.student_id, 0)
             percentage = (attended_count / total_sessions_count) * 100
             if percentage >= 80.0:
                 eligible_count += 1

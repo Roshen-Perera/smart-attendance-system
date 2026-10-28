@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -99,6 +100,14 @@ def delete_student(
     student = db.query(models.Student).filter(models.Student.id == student_id).first()
     if not student:
         raise HTTPException(404, "Student not found")
+
+    # Clean up physical face image files on disk
+    for face_img in student.face_images:
+        if face_img.image_path and os.path.exists(face_img.image_path):
+            try:
+                os.remove(face_img.image_path)
+            except OSError as e:
+                logger.warning(f"Failed to remove face image file {face_img.image_path}: {e}")
 
     db.delete(student)
     db.commit()

@@ -17,6 +17,7 @@ class Class(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     course_code = Column(String, nullable=False, index=True)
     course_name = Column(String, nullable=False)
+    schedule_info = Column(String, nullable=True)
     lecturer_id = Column(UUID(as_uuid=True), ForeignKey("lecturers.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     lecturer = relationship("Lecturer", back_populates="classes")

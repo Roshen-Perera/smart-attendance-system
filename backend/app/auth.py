@@ -4,8 +4,12 @@ from typing import Optional
 
 import bcrypt
 from jose import JWTError, jwt
+from app.logger import logger
 
 SECRET_KEY = os.getenv("SECRET_KEY", "fallback_secret_key_change_me")
+if SECRET_KEY == "fallback_secret_key_change_me":
+    logger.warning("INSECURE CONFIGURATION: Default fallback SECRET_KEY is being used. Set SECRET_KEY in your .env file!")
+
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
@@ -13,7 +17,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return bcrypt.checkpw(
-            plain_password.encode("utf-8"),
+            plain_password.encode("utf-8")[:72],
             hashed_password.encode("utf-8")
         )
     except Exception:
@@ -21,7 +25,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def get_password_hash(password: str) -> str:
-    pwd_bytes = password.encode("utf-8")
+    pwd_bytes = password.encode("utf-8")[:72]
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(pwd_bytes, salt).decode("utf-8")
 

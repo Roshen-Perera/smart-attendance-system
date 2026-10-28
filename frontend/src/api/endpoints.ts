@@ -24,6 +24,7 @@ import type {
   RecognitionResult,
   MultiFaceRecognitionResult,
   ClassAnalytics,
+  ClassPredictiveAnalytics,
 } from '../types';
 
 // Auth
@@ -127,8 +128,11 @@ export const classesApi = {
 
 // Enrollments
 export const enrollmentsApi = {
-  getAll: async (skip = 0, limit = 100): Promise<Enrollment[]> => {
-    const res = await api.get(`/enrollments?skip=${skip}&limit=${limit}`);
+  getAll: async (class_id?: string, student_id?: string, skip = 0, limit = 500): Promise<Enrollment[]> => {
+    const params = new URLSearchParams({ skip: String(skip), limit: String(limit) });
+    if (class_id) params.append('class_id', class_id);
+    if (student_id) params.append('student_id', student_id);
+    const res = await api.get(`/enrollments?${params.toString()}`);
     return res.data;
   },
   getById: async (id: string): Promise<Enrollment> => {
@@ -215,6 +219,9 @@ export const facesApi = {
     const res = await api.get(`/faces/${encodeURIComponent(regNumber)}`);
     return res.data;
   },
+  deleteImage: async (imageId: string): Promise<void> => {
+    await api.delete(`/faces/${imageId}`);
+  },
   generateEmbedding: async (regNumber: string): Promise<FaceEmbedding> => {
     const res = await api.post(`/embeddings/generate/${encodeURIComponent(regNumber)}`);
     return res.data;
@@ -250,8 +257,12 @@ export const recognitionApi = {
 
 // Eligibility
 export const eligibilityApi = {
-  get: async (studentId: string, classId: string): Promise<EligibilityResult> => {
-    const res = await api.get(`/eligibility/${studentId}/${classId}`);
+  get: async (studentId: string, classId: string, plannedSessions = 15): Promise<EligibilityResult> => {
+    const res = await api.get(`/eligibility/${studentId}/${classId}?planned_sessions=${plannedSessions}`);
+    return res.data;
+  },
+  getClassPredictions: async (classId: string, plannedSessions = 15): Promise<ClassPredictiveAnalytics> => {
+    const res = await api.get(`/eligibility/class/${classId}/predictions?planned_sessions=${plannedSessions}`);
     return res.data;
   },
 };

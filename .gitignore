@@ -6,6 +6,12 @@
 # Node
 **/node_modules/
 **/.next/
+frontend/dist/
+dist/
+
+# Uploads & Temp
+uploads/
+**/uploads/
 
 # Environment
 .env

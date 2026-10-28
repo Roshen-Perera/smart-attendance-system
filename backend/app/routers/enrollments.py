@@ -52,10 +52,17 @@ def create_enrollment(
 @router.get("", response_model=list[schemas.EnrollmentOut])
 def get_enrollments(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=1000),
+    class_id: str | None = None,
+    student_id: str | None = None,
     db: Session = Depends(get_db)
 ):
-    return db.query(models.Enrollment).offset(skip).limit(limit).all()
+    query = db.query(models.Enrollment)
+    if class_id:
+        query = query.filter(models.Enrollment.class_id == class_id)
+    if student_id:
+        query = query.filter(models.Enrollment.student_id == student_id)
+    return query.offset(skip).limit(limit).all()
 
 
 @router.get("/{enrollment_id}", response_model=schemas.EnrollmentOut)
