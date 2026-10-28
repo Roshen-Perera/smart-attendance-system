@@ -85,15 +85,19 @@ export const EnrollmentsPage: React.FC = () => {
     }
   };
 
-  // Filter available non-enrolled students
+  // Filter available non-enrolled students (sorted ascending)
   const enrolledStudentIds = new Set(enrolledStudents.map((s) => s.id));
-  const availableStudents = allStudents.filter((s) => !enrolledStudentIds.has(s.id));
+  const availableStudents = allStudents
+    .filter((s) => !enrolledStudentIds.has(s.id))
+    .sort((a, b) => a.reg_number.localeCompare(b.reg_number, undefined, { numeric: true }));
 
-  const filteredEnrolled = enrolledStudents.filter(
-    (s) =>
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.reg_number.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredEnrolled = [...enrolledStudents]
+    .sort((a, b) => a.reg_number.localeCompare(b.reg_number, undefined, { numeric: true }))
+    .filter(
+      (s) =>
+        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.reg_number.toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">

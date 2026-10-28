@@ -1,12 +1,42 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Calendar, Edit2, Trash2, Users } from 'lucide-react';
+import { Plus, Calendar, Edit2, Trash2, Users, Clock } from 'lucide-react';
 import { classesApi, lecturersApi } from '../api/endpoints';
 import type { ClassCourse, Lecturer, ClassCreate } from '../types';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useAuthStore } from '../store/authStore';
 import toast from 'react-hot-toast';
+
+const DAYS_OF_WEEK = [
+  'Mondays',
+  'Tuesdays',
+  'Wednesdays',
+  'Thursdays',
+  'Fridays',
+  'Saturdays',
+  'Sundays',
+];
+
+const formatTime12h = (time24: string): string => {
+  if (!time24) return '';
+  const parts = time24.split(':');
+  if (parts.length < 2) return time24;
+  let h = parseInt(parts[0], 10);
+  const m = parts[1];
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  if (h === 0) h = 12;
+  const hDisplay = h < 10 ? `0${h}` : `${h}`;
+  return `${hDisplay}:${m} ${ampm}`;
+};
+
+const buildScheduleString = (day: string, start: string, end: string, venue: string) => {
+  if (!day && !start) return '';
+  const timePart = start && end ? `${formatTime12h(start)} - ${formatTime12h(end)}` : start ? `${formatTime12h(start)}` : '';
+  const venuePart = venue.trim() ? ` (${venue.trim()})` : '';
+  return `${day} ${timePart}${venuePart}`.trim();
+};
 
 export const ClassesPage: React.FC = () => {
   const { user } = useAuthStore();
@@ -25,6 +55,13 @@ export const ClassesPage: React.FC = () => {
   const [courseName, setCourseName] = useState('');
   const [lecturerId, setLecturerId] = useState('');
   const [scheduleInfo, setScheduleInfo] = useState('');
+
+  // Schedule Picker state
+  const [scheduleDay, setScheduleDay] = useState('Mondays');
+  const [scheduleStartTime, setScheduleStartTime] = useState('09:00');
+  const [scheduleEndTime, setScheduleEndTime] = useState('11:00');
+  const [scheduleVenue, setScheduleVenue] = useState('');
+  const [useCustomSchedule, setUseCustomSchedule] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -50,7 +87,12 @@ export const ClassesPage: React.FC = () => {
     setCourseCode('');
     setCourseName('');
     setLecturerId(lecturers[0]?.id || '');
-    setScheduleInfo('');
+    setScheduleDay('Mondays');
+    setScheduleStartTime('09:00');
+    setScheduleEndTime('11:00');
+    setScheduleVenue('');
+    setUseCustomSchedule(false);
+    setScheduleInfo(buildScheduleString('Mondays', '09:00', '11:00', ''));
     setIsCreateOpen(true);
   };
 
@@ -60,6 +102,7 @@ export const ClassesPage: React.FC = () => {
     setCourseName(c.course_name);
     setLecturerId(c.lecturer_id);
     setScheduleInfo(c.schedule_info || '');
+    setUseCustomSchedule(true);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -260,15 +303,104 @@ export const ClassesPage: React.FC = () => {
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Schedule Info</label>
-            <input
-              type="text"
-              value={scheduleInfo}
-              onChange={(e) => setScheduleInfo(e.target.value)}
-              placeholder="Mondays 09:00 AM - 11:00 AM (Lab 02)"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-            />
+          {/* Schedule Picker */}
+          <div className="space-y-2 p-3.5 bg-slate-950/60 border border-slate-800 rounded-2xl">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Class Schedule</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setUseCustomSchedule(!useCustomSchedule)}
+                className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium"
+              >
+                {useCustomSchedule ? '← Use Day & Time Pickers' : 'Type Custom Text →'}
+              </button>
+            </div>
+
+            {!useCustomSchedule ? (
+              <div className="space-y-2.5 pt-1">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">Day of Week</label>
+                    <select
+                      value={scheduleDay}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setScheduleDay(val);
+                        setScheduleInfo(buildScheduleString(val, scheduleStartTime, scheduleEndTime, scheduleVenue));
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                    >
+                      {DAYS_OF_WEEK.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">Start Time</label>
+                    <input
+                      type="time"
+                      value={scheduleStartTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setScheduleStartTime(val);
+                        setScheduleInfo(buildScheduleString(scheduleDay, val, scheduleEndTime, scheduleVenue));
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 [color-scheme:dark]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">End Time</label>
+                    <input
+                      type="time"
+                      value={scheduleEndTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setScheduleEndTime(val);
+                        setScheduleInfo(buildScheduleString(scheduleDay, scheduleStartTime, val, scheduleVenue));
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 [color-scheme:dark]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">Lecture Hall / Lab (Optional)</label>
+                  <input
+                    type="text"
+                    value={scheduleVenue}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setScheduleVenue(val);
+                      setScheduleInfo(buildScheduleString(scheduleDay, scheduleStartTime, scheduleEndTime, val));
+                    }}
+                    placeholder="e.g. Lab 02, Hall 4B"
+                    className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                {scheduleInfo && (
+                  <div className="flex items-center gap-2 p-2 bg-indigo-950/40 border border-indigo-800/40 rounded-xl text-xs text-indigo-300">
+                    <Calendar className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                    <span className="font-mono text-[11px] truncate">{scheduleInfo}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  value={scheduleInfo}
+                  onChange={(e) => setScheduleInfo(e.target.value)}
+                  placeholder="e.g. Mondays 09:00 AM - 11:00 AM (Lab 02)"
+                  className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
@@ -332,14 +464,104 @@ export const ClassesPage: React.FC = () => {
             </select>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Schedule Info</label>
-            <input
-              type="text"
-              value={scheduleInfo}
-              onChange={(e) => setScheduleInfo(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
-            />
+          {/* Schedule Picker */}
+          <div className="space-y-2 p-3.5 bg-slate-950/60 border border-slate-800 rounded-2xl">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Class Schedule</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setUseCustomSchedule(!useCustomSchedule)}
+                className="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium"
+              >
+                {useCustomSchedule ? '← Use Day & Time Pickers' : 'Type Custom Text →'}
+              </button>
+            </div>
+
+            {!useCustomSchedule ? (
+              <div className="space-y-2.5 pt-1">
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">Day of Week</label>
+                    <select
+                      value={scheduleDay}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setScheduleDay(val);
+                        setScheduleInfo(buildScheduleString(val, scheduleStartTime, scheduleEndTime, scheduleVenue));
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                    >
+                      {DAYS_OF_WEEK.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">Start Time</label>
+                    <input
+                      type="time"
+                      value={scheduleStartTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setScheduleStartTime(val);
+                        setScheduleInfo(buildScheduleString(scheduleDay, val, scheduleEndTime, scheduleVenue));
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 [color-scheme:dark]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-slate-400 mb-1">End Time</label>
+                    <input
+                      type="time"
+                      value={scheduleEndTime}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setScheduleEndTime(val);
+                        setScheduleInfo(buildScheduleString(scheduleDay, scheduleStartTime, val, scheduleVenue));
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-2 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500 [color-scheme:dark]"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">Lecture Hall / Lab (Optional)</label>
+                  <input
+                    type="text"
+                    value={scheduleVenue}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setScheduleVenue(val);
+                      setScheduleInfo(buildScheduleString(scheduleDay, scheduleStartTime, scheduleEndTime, val));
+                    }}
+                    placeholder="e.g. Lab 02, Hall 4B"
+                    className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+
+                {scheduleInfo && (
+                  <div className="flex items-center gap-2 p-2 bg-indigo-950/40 border border-indigo-800/40 rounded-xl text-xs text-indigo-300">
+                    <Calendar className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                    <span className="font-mono text-[11px] truncate">{scheduleInfo}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <input
+                  type="text"
+                  value={scheduleInfo}
+                  onChange={(e) => setScheduleInfo(e.target.value)}
+                  placeholder="e.g. Mondays 09:00 AM - 11:00 AM (Lab 02)"
+                  className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">

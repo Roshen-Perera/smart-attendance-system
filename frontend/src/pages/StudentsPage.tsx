@@ -124,12 +124,21 @@ export const StudentsPage: React.FC = () => {
     }
   };
 
-  const filteredStudents = students.filter(
-    (s) =>
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.reg_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.email && s.email.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredStudents = [...students]
+    .sort((a, b) => {
+      const regComp = a.reg_number.localeCompare(b.reg_number, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      if (regComp !== 0) return regComp;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    })
+    .filter(
+      (s) =>
+        s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        s.reg_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (s.email && s.email.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
 
   return (
     <div className="space-y-6">

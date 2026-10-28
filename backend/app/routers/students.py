@@ -46,7 +46,13 @@ def get_students(
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
-    return db.query(models.Student).offset(skip).limit(limit).all()
+    return (
+        db.query(models.Student)
+        .order_by(models.Student.reg_number.asc(), models.Student.created_at.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/{student_id}", response_model=schemas.StudentOut)

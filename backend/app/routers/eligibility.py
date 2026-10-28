@@ -171,7 +171,9 @@ def get_class_predictive_analytics(
 
     enrollments = (
         db.query(models.Enrollment)
+        .join(models.Student)
         .filter(models.Enrollment.class_id == class_id)
+        .order_by(models.Student.reg_number.asc(), models.Student.created_at.asc())
         .all()
     )
 

@@ -7,6 +7,11 @@ import { Modal } from '../components/ui/Modal';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import toast from 'react-hot-toast';
 
+const formatLocalDatetime = (d: Date = new Date()): string => {
+  const pad = (num: number) => String(num).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 export const SessionsPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const filterClassId = searchParams.get('class_id') || '';
@@ -23,9 +28,7 @@ export const SessionsPage: React.FC = () => {
 
   // Form inputs
   const [classId, setClassId] = useState(filterClassId);
-  const [sessionDate, setSessionDate] = useState(
-    new Date().toISOString().slice(0, 16)
-  );
+  const [sessionDate, setSessionDate] = useState(formatLocalDatetime());
   const [topic, setTopic] = useState('');
 
   const fetchData = async () => {
@@ -50,7 +53,7 @@ export const SessionsPage: React.FC = () => {
 
   const openCreateModal = () => {
     setClassId(selectedClassId || (classes[0]?.id || ''));
-    setSessionDate(new Date().toISOString().slice(0, 16));
+    setSessionDate(formatLocalDatetime());
     setTopic('');
     setIsCreateOpen(true);
   };
@@ -250,12 +253,21 @@ export const SessionsPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1">Date & Time *</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-slate-300">Date & Time *</label>
+              <button
+                type="button"
+                onClick={() => setSessionDate(formatLocalDatetime())}
+                className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium transition-colors"
+              >
+                Set to Current Time
+              </button>
+            </div>
             <input
               type="datetime-local"
               value={sessionDate}
               onChange={(e) => setSessionDate(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500 [color-scheme:dark]"
               required
             />
           </div>

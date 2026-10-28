@@ -79,7 +79,9 @@ def get_class_students(class_id: str, db: Session = Depends(get_db)):
 
     enrollments = (
         db.query(models.Enrollment)
+        .join(models.Student)
         .filter(models.Enrollment.class_id == class_id)
+        .order_by(models.Student.reg_number.asc(), models.Student.created_at.asc())
         .all()
     )
 
